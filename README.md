@@ -1,0 +1,3 @@
+As a fellow OSU student, I simplify cannot understand the bus system. With our new state of the art website, a user can understand how he and she can navigate the campus with a map of the bus routes, user inputs that show how busy bus routes are, a route planner that compares walk, scooter, and bus times, and even a personal ai assistant that tells the user how to get from place A to place B. The Best Route AI works wonders as a student can simply ask "how can I get from the union to Morrill" and the student will know which bus to take, how busy the bus is, which stop to get off, and even other options to get there.
+
+*Ignore the backend folder, initally decided to use python to code backend for AI assistant but then decided to code AI with just React instead 
