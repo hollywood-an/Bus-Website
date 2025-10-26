@@ -253,14 +253,14 @@ const ROUTE_NAMES = {
   'NWC': 'Northwest Connector'
 };
   const THEME_COLORS = [
-  { name: 'Default Blue', points: 0, primary: 'bg-blue-600', secondary: 'bg-blue-100' },
-  { name: 'Forest Green', points: 5, primary: 'bg-green-600', secondary: 'bg-green-100' },
-  { name: 'Sunset Orange', points: 10, primary: 'bg-orange-600', secondary: 'bg-orange-100' },
-  { name: 'Royal Purple', points: 15, primary: 'bg-purple-600', secondary: 'bg-purple-100' },
-  { name: 'Hot Pink', points: 20, primary: 'bg-pink-600', secondary: 'bg-pink-100' },
-  { name: 'Turquoise', points: 30, primary: 'bg-teal-600', secondary: 'bg-teal-100' },
-  { name: 'Golden Hour', points: 40, primary: 'bg-amber-600', secondary: 'bg-amber-100' },
-  { name: 'Midnight', points: 50, primary: 'bg-indigo-900', secondary: 'bg-indigo-100' }
+  { name: 'Scarlet', points: 0, primary: 'bg-[#BB0000]', secondary: 'bg-[#CFCFCF]', textColor: 'text-white' },
+  { name: 'Gray', points: 5, primary: 'bg-[#666666]', secondary: 'bg-[#CFCFCF]', textColor: 'text-white' },
+  { name: 'Carmen Gold', points: 10, primary: 'bg-[#EAAA00]', secondary: 'bg-[#CFCFCF]', textColor: 'text-black' },
+  { name: 'Buckeye Leaf', points: 15, primary: 'bg-[#666633]', secondary: 'bg-[#CFCFCF]', textColor: 'text-white' },
+  { name: 'Midnight Black', points: 20, primary: 'bg-[#000000]', secondary: 'bg-[#CFCFCF]', textColor: 'text-white' },
+  { name: 'Scarlet & Gray', points: 30, primary: 'bg-gradient-to-r from-[#BB0000] to-[#666666]', secondary: 'bg-[#CFCFCF]', textColor: 'text-white' },
+  { name: 'Carmen & Scarlet', points: 40, primary: 'bg-gradient-to-r from-[#EAAA00] to-[#BB0000]', secondary: 'bg-[#CFCFCF]', textColor: 'text-white' },
+  { name: 'Buckeye Pride', points: 50, primary: 'bg-gradient-to-r from-[#BB0000] via-[#666666] to-[#EAAA00]', secondary: 'bg-[#CFCFCF]', textColor: 'text-white' }
 ];
 
 export default function BusCapacityTracker() {
@@ -993,13 +993,13 @@ Always prioritize student safety, comfort, and time efficiency.`;
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4">
       <div className="max-w-4xl mx-auto">
-        <div className={`${currentTheme.primary} text-white rounded-2xl shadow-lg p-6 mb-6`}>
+        <div className={`${currentTheme.primary} ${currentTheme.textColor} rounded-2xl shadow-lg p-6 mb-6`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <img src={OSULogo} width="40" height="40" alt="OSU Logo" />
               <div>
-                <h1 className="text-2xl font-bold">OSU Commute Page</h1>
-                <p className="text-sm opacity-90">Crowdsourced capacity reports</p>
+                <h1 className="text-2xl font-bold text-gray-200">OSU Commute Page</h1>
+                <p className="text-sm text-gray-200 opacity-90">Crowdsourced capacity reports</p>
               </div>
             </div>
             <div className="flex items-center gap-2 bg-white bg-opacity-20 rounded-lg px-4 py-2">
@@ -1020,7 +1020,7 @@ Always prioritize student safety, comfort, and time efficiency.`;
             onClick={() => setView('check')}
             className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
               view === 'check'
-                ? `${currentTheme.primary} text-white shadow-lg`
+                ? `${currentTheme.primary} ${currentTheme.textColor} shadow-lg`
                 : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
@@ -1030,7 +1030,7 @@ Always prioritize student safety, comfort, and time efficiency.`;
             onClick={() => setView('report')}
             className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
               view === 'report'
-                ? `${currentTheme.primary} text-white shadow-lg`
+                ? `${currentTheme.primary} ${currentTheme.textColor} shadow-lg`
                 : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
@@ -1040,7 +1040,7 @@ Always prioritize student safety, comfort, and time efficiency.`;
             onClick={() => setView('map')}
             className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
               view === 'map'
-                ? `${currentTheme.primary} text-white shadow-lg`
+                ? `${currentTheme.primary} ${currentTheme.textColor} shadow-lg`
                 : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
@@ -1050,7 +1050,7 @@ Always prioritize student safety, comfort, and time efficiency.`;
             onClick={() => setView('planner')}
             className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
               view === 'planner'
-                ? `${currentTheme.primary} text-white shadow-lg`
+                ? `${currentTheme.primary} ${currentTheme.textColor} shadow-lg`
                 : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
@@ -1060,7 +1060,7 @@ Always prioritize student safety, comfort, and time efficiency.`;
             onClick={() => setView('ai')}
             className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
               view === 'ai'
-                ? `${currentTheme.primary} text-white shadow-lg`
+                ? `${currentTheme.primary} ${currentTheme.textColor} shadow-lg`
                 : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
@@ -1071,7 +1071,7 @@ Always prioritize student safety, comfort, and time efficiency.`;
             onClick={() => setView('rewards')}
             className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
               view === 'rewards'
-                ? `${currentTheme.primary} text-white shadow-lg`
+                ? `${currentTheme.primary} ${currentTheme.textColor} shadow-lg`
                 : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
@@ -1112,7 +1112,7 @@ Always prioritize student safety, comfort, and time efficiency.`;
               </div>
               <button
                 onClick={handleCheck}
-                className={`w-full ${currentTheme.primary} text-white py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity`}
+                className={`w-full ${currentTheme.primary} ${currentTheme.textColor} py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity`}
               >
                 Check Status
               </button>
@@ -1254,7 +1254,7 @@ Always prioritize student safety, comfort, and time efficiency.`;
                 </div>
                 <button
                   onClick={handleReport}
-                  className={`w-full ${currentTheme.primary} text-white py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity`}
+                  className={`w-full ${currentTheme.primary} ${currentTheme.textColor} py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity`}
                 >
                   Submit Report & Earn Point! 🎉
                 </button>
@@ -1534,7 +1534,7 @@ Always prioritize student safety, comfort, and time efficiency.`;
                   <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[80%] p-3 rounded-lg ${
                       msg.role === 'user' 
-                        ? `${currentTheme.primary} text-white` 
+                        ? `${currentTheme.primary} ${currentTheme.textColor}` 
                         : 'bg-gray-100 text-gray-800'
                     }`}>
                       <p className="whitespace-pre-line">{msg.content}</p>
@@ -1568,7 +1568,7 @@ Always prioritize student safety, comfort, and time efficiency.`;
               <button
                 onClick={handleSendMessage}
                 disabled={!chatInput.trim() || isAiThinking}
-                className={`${currentTheme.primary} text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed`}
+                className={`${currentTheme.primary} ${currentTheme.textColor} px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 <Send size={20} />
               </button>
