@@ -718,7 +718,7 @@ RESPONSE STYLE:
 Always prioritize student safety, comfort, and time efficiency.`;
 
       // REPLACE 'YOUR_OPENAI_API_KEY_HERE' with your actual OpenAI API key
-      const OPENAI_API_KEY = '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';
+      const OPENAI_API_KEY = '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';
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
