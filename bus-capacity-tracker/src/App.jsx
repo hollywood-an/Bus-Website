@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bus, Users, TrendingUp, Award, Palette, MessageCircle, Send } from 'lucide-react';
+import { Bus, Users, TrendingUp, Award, MessageCircle, Send } from 'lucide-react';
 import OSULogo from './OSU.png';
 
 const CAPACITY_LEVELS = [
@@ -267,7 +267,7 @@ export default function BusCapacityTracker() {
   const [busReports, setBusReports] = useState({});
   const [userPoints, setUserPoints] = useState(0);
   const [selectedTheme, setSelectedTheme] = useState(0);
-  const [view, setView] = useState('check');
+  const [view, setView] = useState('map');
   const [checkBusId, setCheckBusId] = useState('');
   const [checkStop, setCheckStop] = useState('');
   const [reportBusId, setReportBusId] = useState('');
@@ -335,7 +335,7 @@ export default function BusCapacityTracker() {
 
     const map = new window.google.maps.Map(mapElement, {
       center: { lat: 40.0006, lng: -83.0150 },
-      zoom: 15,
+      zoom: 14,
       mapTypeControl: true,
       streetViewControl: false,
       fullscreenControl: true,
@@ -718,7 +718,7 @@ RESPONSE STYLE:
 Always prioritize student safety, comfort, and time efficiency.`;
 
       // REPLACE 'YOUR_OPENAI_API_KEY_HERE' with your actual OpenAI API key
-      const OPENAI_API_KEY = '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';
+      const OPENAI_API_KEY = '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';
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -1066,17 +1066,6 @@ Always prioritize student safety, comfort, and time efficiency.`;
           >
             <MessageCircle className="inline mr-2" size={20} />
             Best Route AI
-          </button>
-          <button
-            onClick={() => setView('rewards')}
-            className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
-              view === 'rewards'
-                ? `${currentTheme.primary} ${currentTheme.textColor} shadow-lg`
-                : 'bg-white text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            <Palette className="inline mr-2" size={20} />
-            Themes
           </button>
         </div>
 
@@ -1572,45 +1561,6 @@ Always prioritize student safety, comfort, and time efficiency.`;
               >
                 <Send size={20} />
               </button>
-            </div>
-          </div>
-        )}
-
-        {view === 'rewards' && (
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <Palette size={24} />
-              Unlock Theme Colors
-            </h2>
-            <p className="text-gray-600 mb-6">Earn points by reporting bus capacity to unlock new theme colors!</p>
-            <div className="grid gap-4">
-              {THEME_COLORS.map((theme, idx) => {
-                const unlocked = userPoints >= theme.points;
-                return (
-                  <div
-                    key={idx}
-                    className={`p-4 rounded-lg border-2 transition-all ${
-                      unlocked ? 'cursor-pointer hover:shadow-md' : 'opacity-50'
-                    } ${selectedTheme === idx ? 'border-blue-500 shadow-md' : 'border-gray-200'}`}
-                    onClick={() => unlocked && handleThemeChange(idx)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-12 h-12 rounded-full ${theme.primary}`}></div>
-                        <div>
-                          <p className="font-semibold">{theme.name}</p>
-                          <p className="text-sm text-gray-600">
-                            {unlocked ? '✓ Unlocked' : `${theme.points} points needed`}
-                          </p>
-                        </div>
-                      </div>
-                      {selectedTheme === idx && (
-                        <span className="text-blue-600 font-semibold">Active</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
         )}
