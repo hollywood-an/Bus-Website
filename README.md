@@ -53,13 +53,14 @@ Single-page React app with five views (`check`, `report`, `map`, `planner`, `ai`
 git clone https://github.com/hollywood-an/Bus-Website.git
 cd Bus-Website/bus-capacity-tracker
 npm install
+cp .env.example .env   # then fill in your own keys
 npm run dev
 ```
 
 Open http://localhost:5173. The app runs entirely in the browser.
 
-To enable the map and AI assistant, drop your own keys into `src/App.jsx`:
-- Google Maps key — `script.src` in the `useEffect` that loads `maps.googleapis.com`
-- OpenAI key — the `OPENAI_API_KEY` constant in `handleSendMessage` (note: browser-side OpenAI calls require billing enabled on your OpenAI account for CORS to work)
+`.env` needs two values (both used client-side via Vite's `import.meta.env`):
+- `VITE_GOOGLE_MAPS_API_KEY` — a Google Maps JavaScript API key with the Directions and Geometry libraries enabled
+- `VITE_OPENAI_API_KEY` — an OpenAI key (needs billing enabled — browser-side calls to `api.openai.com` require it for CORS)
 
-> For a real deployment these would move server-side; they're inlined here because this was built as a hackathon prototype.
+> Both keys are exposed to the browser bundle by design — anything prefixed `VITE_` is. For a real deployment the OpenAI call would move behind a server proxy; it's client-side here because this was built as a hackathon prototype.
