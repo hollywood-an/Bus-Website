@@ -315,7 +315,7 @@ export default function BusCapacityTracker() {
   useEffect(() => {
     if (view === 'map' && !mapLoaded) {
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=***REMOVED***&libraries=directions,geometry`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&libraries=directions,geometry`;
       script.async = true;
       script.defer = true;
       script.onload = () => setMapLoaded(true);
@@ -717,8 +717,7 @@ RESPONSE STYLE:
 
 Always prioritize student safety, comfort, and time efficiency.`;
 
-      // REPLACE 'YOUR_OPENAI_API_KEY_HERE' with your actual OpenAI API key
-      const OPENAI_API_KEY = '***REMOVED***';
+      const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
