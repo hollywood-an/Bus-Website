@@ -92,7 +92,7 @@ export default function TripMap({ geometry }) {
   return (
     <div>
       <div ref={divRef} className="rounded-lg overflow-hidden border border-gray-300" style={{ height: 220, width: '100%' }} />
-      <div className="mt-1 flex flex-wrap gap-3 text-xs text-gray-600">
+      <div className="mt-1.5 flex flex-wrap gap-3 text-xs text-muted">
         <span className="inline-flex items-center gap-1"><span className="w-3 h-0.5 bg-gray-500 inline-block" /> walk / scooter</span>
         {geometry.bus && (
           <span className="inline-flex items-center gap-1">

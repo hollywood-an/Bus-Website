@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { TrendingUp } from 'lucide-react';
+import { Footprints, Bus, Zap, Navigation } from 'lucide-react';
 import TripMap from './TripMap';
 
-// Phase 4.7: free-text, geocoded planning. from/to are controlled by App; the trip comes from the
-// server's GET /api/plan (the same planTrip core the agent's plan_route tool uses).
+// Free-text, geocoded planning. from/to controlled by App; trip comes from GET /api/plan (the same
+// planTrip core the agent uses). Restyled to the Bold Buckeye system.
 export default function PlannerView({ fromLocation, toLocation, setFromLocation, setToLocation }) {
   const [trip, setTrip] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -43,90 +43,73 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
       }
     : null;
 
-  const card = (active) =>
-    `p-4 rounded-lg border-2 text-center ${active ? 'border-green-500 bg-green-50' : 'border-gray-200'}`;
+  const inputClass = 'w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm font-semibold text-ink placeholder:font-normal placeholder:text-muted focus:border-scarlet focus:outline-none';
+
+  const Mode = ({ icon, min, label, sub, active }) => {
+    const Icon = icon;
+    return (
+    <div
+      className={`rounded-lg border p-3 text-center ${active ? 'border-scarlet bg-scarlet-wash' : 'border-line bg-surface'}`}
+    >
+      <Icon size={18} className={`mx-auto ${active ? 'text-scarlet-ink' : 'text-ink-soft'}`} />
+      <div className="mt-1.5 font-mono text-xl font-bold text-ink">{min}</div>
+      <div className="text-xs font-bold text-ink-soft">{label}</div>
+      <div className="text-[11px] text-muted">{sub}</div>
+    </div>
+    );
+  };
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6">
-      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-        <TrendingUp size={24} />
-        Route Planner
-      </h2>
-      <p className="text-gray-600 mb-4">Type any OSU building or nearby address — walk vs. bus vs. scooter.</p>
+    <section className="mx-auto max-w-2xl">
+      <h1 className="text-2xl">Plan a trip</h1>
+      <p className="mt-1 text-sm text-muted">Any OSU building or nearby address — walk vs. bus vs. scooter.</p>
 
-      <div className="space-y-3 mb-4">
-        <input
-          type="text"
-          value={fromLocation}
-          onChange={(e) => setFromLocation(e.target.value)}
-          onKeyDown={onKey}
-          placeholder="From — e.g. Morrill Tower"
-          className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-        />
-        <input
-          type="text"
-          value={toLocation}
-          onChange={(e) => setToLocation(e.target.value)}
-          onKeyDown={onKey}
-          placeholder="To — e.g. Thompson Library"
-          className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-        />
+      <div className="mt-4 space-y-2.5">
+        <input value={fromLocation} onChange={(e) => setFromLocation(e.target.value)} onKeyDown={onKey} placeholder="From — e.g. Morrill Tower" className={inputClass} aria-label="From" />
+        <input value={toLocation} onChange={(e) => setToLocation(e.target.value)} onKeyDown={onKey} placeholder="To — e.g. Thompson Library" className={inputClass} aria-label="To" />
         <button
           onClick={plan}
           disabled={loading || !fromLocation.trim() || !toLocation.trim()}
-          className="w-full bg-[#BB0000] text-white py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-scarlet px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
         >
+          <Navigation size={16} />
           {loading ? 'Planning…' : 'Plan trip'}
         </button>
       </div>
 
-      {error && <div className="bg-yellow-50 border-l-4 border-yellow-500 p-3 rounded text-yellow-800 text-sm">{error}</div>}
+      {error && (
+        <div className="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-sm font-semibold text-ink-soft">{error}</div>
+      )}
 
       {trip && (
-        <div className="space-y-4">
-          <div className="text-sm text-gray-700 font-medium">
-            {trip.from.name} → {trip.to.name}
+        <div className="mt-5 space-y-4">
+          <div className="font-bold text-ink">
+            {trip.from.name} <span className="text-muted">→</span> {trip.to.name}
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className={card(trip.fastest === 'walk')}>
-              <div className="text-2xl font-bold text-gray-900">{trip.walkMin} min</div>
-              <div className="text-sm text-gray-600 mt-1">Walk</div>
-              <div className="text-xs text-gray-500 mt-1">free</div>
-            </div>
-            <div className={card(trip.fastest === 'bus')}>
-              {trip.bus ? (
-                <>
-                  <div className="text-2xl font-bold text-gray-900">{trip.bus.totalMin} min</div>
-                  <div className="text-sm text-gray-600 mt-1">Bus · {trip.bus.routeCode}</div>
-                  <div className="text-xs text-gray-500 mt-1">{trip.bus.busMin} min on board</div>
-                </>
-              ) : (
-                <>
-                  <div className="text-lg font-medium text-gray-500">—</div>
-                  <div className="text-sm text-gray-600 mt-1">Bus</div>
-                  <div className="text-xs text-gray-500 mt-1">no good route</div>
-                </>
-              )}
-            </div>
-            <div className={card(trip.fastest === 'scooter')}>
-              <div className="text-2xl font-bold text-gray-900">{trip.scooterMin} min</div>
-              <div className="text-sm text-gray-600 mt-1">Scooter</div>
-              <div className="text-xs text-gray-500 mt-1">Veo / Spin</div>
-            </div>
+          <div className="grid grid-cols-3 gap-2.5">
+            <Mode icon={Footprints} min={`${trip.walkMin}`} label="Walk" sub="free" active={trip.fastest === 'walk'} />
+            <Mode
+              icon={Bus}
+              min={trip.bus ? `${trip.bus.totalMin}` : '—'}
+              label={trip.bus ? `Bus · ${trip.bus.routeCode}` : 'Bus'}
+              sub={trip.bus ? `${trip.bus.busMin}m on board` : 'no good route'}
+              active={trip.fastest === 'bus'}
+            />
+            <Mode icon={Zap} min={`${trip.scooterMin}`} label="Scooter" sub="Veo / Spin" active={trip.fastest === 'scooter'} />
           </div>
 
           {trip.bus && (
-            <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded text-sm text-blue-900">
-              Take the <strong>{trip.bus.routeName}</strong>: walk ~{trip.bus.walkToBoardMin} min to{' '}
-              <strong>{trip.bus.board.name}</strong>, ride ~{trip.bus.busMin} min, then ~{trip.bus.walkFromAlightMin} min to{' '}
-              <strong>{trip.bus.alight.name}</strong>.
+            <div className="rounded-lg border border-line bg-surface p-3 text-sm text-ink-soft">
+              Take the <strong className="text-ink">{trip.bus.routeName}</strong>: walk ~{trip.bus.walkToBoardMin}m to{' '}
+              <strong className="text-ink">{trip.bus.board.name}</strong>, ride ~{trip.bus.busMin}m, then ~{trip.bus.walkFromAlightMin}m to{' '}
+              <strong className="text-ink">{trip.bus.alight.name}</strong>.
             </div>
           )}
 
           <TripMap geometry={geometry} />
         </div>
       )}
-    </div>
+    </section>
   );
 }
