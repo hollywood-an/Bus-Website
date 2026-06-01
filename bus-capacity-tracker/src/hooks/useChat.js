@@ -14,6 +14,7 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
   const [chatInput, setChatInput] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState(null); // { action, args } proposed write awaiting confirm
+  const [currentTrip, setCurrentTrip] = useState(null); // show_trip geometry for the inline map
 
   const confirmedDownNames = () => (down ?? []).filter((d) => d.confirmed).map((d) => nameForCode(d.route));
 
@@ -22,7 +23,11 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
     if (evt?.type === 'confirm') {
       setPendingConfirm({ action: evt.action, args: evt.args || {} });
     } else if (evt?.type === 'ui_directive') {
-      onUiDirective?.(evt); // App applies it: focus the map, highlight stops, open the planner
+      if (evt.action === 'show_trip') {
+        setCurrentTrip(evt.args); // render the trip map inline (no view switch)
+      } else {
+        onUiDirective?.(evt); // focus the campus map / highlight stops (App switches that view)
+      }
     }
   };
 
@@ -235,5 +240,5 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
     return `Current bus status:\n\n${overview}\n\nI can find the best route, flag crowded buses, or check which are running. What do you need?${warning}`;
   };
 
-  return { chatMessages, chatInput, setChatInput, isAiThinking, sendMessage, pendingConfirm, confirmPending, cancelPending };
+  return { chatMessages, chatInput, setChatInput, isAiThinking, sendMessage, pendingConfirm, confirmPending, cancelPending, currentTrip };
 }

@@ -1,4 +1,5 @@
 import { MessageCircle, Send } from 'lucide-react';
+import TripMap from './TripMap';
 
 export default function AiView({
   chatMessages,
@@ -10,6 +11,7 @@ export default function AiView({
   pendingConfirm,
   confirmPending,
   cancelPending,
+  trip,
 }) {
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col h-[600px]">
@@ -18,6 +20,15 @@ export default function AiView({
         Best Route AI Assistant
       </h2>
       <p className="text-sm text-gray-600 mb-4">Ask me about the best bus routes, capacity info, or travel tips!</p>
+
+      {trip && (
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-gray-500 mb-1">
+            Options — {trip.from?.name} → {trip.to?.name}
+          </p>
+          <TripMap geometry={trip} />
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto mb-4 space-y-4">
         {chatMessages.length === 0 ? (

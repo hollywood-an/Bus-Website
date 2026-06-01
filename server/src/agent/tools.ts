@@ -1,6 +1,6 @@
 import * as feed from '../feed';
 import { getReportStore } from '../store';
-import { ROUTE_TIMES, LOCATIONS, resolveLocation } from '../data/planning';
+import { planTrip } from '../planning/planTrip';
 import { validateReport } from '../validateReport';
 
 // Read tools for the agent. Each reads server-owned state (feed cache + report store) and returns a
@@ -12,9 +12,6 @@ const round = (n: number) => Math.round(n * 1e6) / 1e6;
 
 function nameForCode(code: string): string {
   return feed.getRoutes().find((r) => r.code === code)?.name ?? code;
-}
-function codeForName(name: string): string | null {
-  return feed.getRoutes().find((r) => r.name.toLowerCase() === name.toLowerCase())?.code ?? null;
 }
 function knownCode(input: unknown): string | null {
   if (typeof input !== 'string') return null;
@@ -162,29 +159,53 @@ function checkDownBuses() {
   };
 }
 
-function planRoute(input: { from?: unknown; to?: unknown }) {
-  const from = resolveLocation(typeof input.from === 'string' ? input.from : '');
-  const to = resolveLocation(typeof input.to === 'string' ? input.to : '');
-  if (!from || !to) return { error: 'unknown_location', knownLocations: LOCATIONS };
-  if (from === to) return { error: 'same_location', location: from };
-  const entry = ROUTE_TIMES[from]?.[to];
-  if (!entry) return { from, to, hasDirectBus: false, note: 'No route data for that pair — walking or a scooter is your bet.' };
+// Plan a trip between ANY two OSU buildings / nearby addresses (geocoded). Returns a compact summary
+// for the model plus `_geometry` (stripped from the tool_result by the loop) that directiveFor turns
+// into a show_trip directive — the 3 options render on a map inside the chat (no view switch).
+async function planRoute(input: { from?: unknown; to?: unknown }) {
+  const result = await planTrip(
+    typeof input.from === 'string' ? input.from : '',
+    typeof input.to === 'string' ? input.to : '',
+  );
+  if ('error' in result) {
+    return { error: result.error, query: result.query, hint: 'Use any OSU building name or a nearby address.' };
+  }
 
-  const scooterMin = Math.max(1, Math.round(entry.walk / 5));
-  const busRoutes = entry.routes.map((name) => {
-    const code = codeForName(name);
-    const cap = code ? capacityForCode(code) : null;
-    return { route: name, code, capacity: cap ? cap.label : 'no reports', confident: cap?.confident ?? false };
-  });
+  const bus = result.bus;
   return {
-    from,
-    to,
-    walkMin: entry.walk,
-    busMin: entry.bus, // rough hand estimate
-    scooterMin,
-    hasDirectBus: Boolean(entry.bus),
-    busRoutes,
-    note: 'Walk time is a real estimate; bus minutes are approximate. Crowding is crowdsourced.',
+    from: result.from.name,
+    to: result.to.name,
+    walkMin: result.walkMin,
+    scooterMin: result.scooterMin,
+    bus: bus
+      ? {
+          routeCode: bus.routeCode,
+          routeName: bus.routeName,
+          board: bus.board.name,
+          alight: bus.alight.name,
+          walkToBoardMin: bus.walkToBoardMin,
+          busMin: bus.busMin,
+          walkFromAlightMin: bus.walkFromAlightMin,
+          totalMin: bus.totalMin,
+          capacity: capacityForCode(bus.routeCode)?.label ?? 'no reports',
+        }
+      : null,
+    fastest: result.fastest,
+    note: 'Walk/scooter times from real walking distance; bus time is an estimate. Crowding is crowdsourced.',
+    _geometry: {
+      from: { name: result.from.name, lat: result.from.lat, lng: result.from.lng },
+      to: { name: result.to.name, lat: result.to.lat, lng: result.to.lng },
+      walk: { encodedPolyline: result.walkPolyline },
+      bus: bus
+        ? {
+            routeCode: bus.routeCode,
+            routeColor: bus.routeColor,
+            routePolyline: bus.routePolyline,
+            board: bus.board,
+            alight: bus.alight,
+          }
+        : null,
+    },
   };
 }
 
@@ -240,13 +261,6 @@ function highlightStops(input: { stop_ids?: unknown; route?: unknown }) {
   return { ok: true, stopIds: ids, route: knownCode(input.route), shown: `Highlighted ${ids.length} stop(s).` };
 }
 
-function openPlanner(input: { from?: unknown; to?: unknown }) {
-  const from = resolveLocation(typeof input.from === 'string' ? input.from : '');
-  const to = resolveLocation(typeof input.to === 'string' ? input.to : '');
-  if (!from || !to) return { error: 'unknown_location', knownLocations: LOCATIONS };
-  return { ok: true, from, to, shown: `Opened the planner for ${from} → ${to}.` };
-}
-
 export async function dispatchTool(name: string, input: Record<string, unknown>): Promise<unknown> {
   switch (name) {
     case 'get_live_buses':
@@ -273,8 +287,6 @@ export async function dispatchTool(name: string, input: Record<string, unknown>)
       return focusMapOnRoute(input);
     case 'highlight_stops':
       return highlightStops(input);
-    case 'open_planner':
-      return openPlanner(input);
     default:
       return { error: `unknown_tool:${name}` };
   }
@@ -305,8 +317,8 @@ export function directiveFor(name: string, result: unknown): Directive | null {
   if (name === 'highlight_stops' && r.ok) {
     return { type: 'ui_directive', action: name, args: { stopIds: r.stopIds, route: r.route } };
   }
-  if (name === 'open_planner' && r.ok) {
-    return { type: 'ui_directive', action: name, args: { from: r.from, to: r.to } };
+  if (name === 'plan_route' && r._geometry) {
+    return { type: 'ui_directive', action: 'show_trip', args: r._geometry as Record<string, unknown> };
   }
   return null;
 }
@@ -358,7 +370,8 @@ export const TOOL_DEFS = [
   },
   {
     name: 'plan_route',
-    description: 'Compare walking vs bus vs scooter between two campus locations, with the serving routes and their crowding.',
+    description:
+      'Plan a trip between ANY two OSU buildings or nearby addresses (free text — "Morrill", "Jones Tower", "1739 N High St"). Returns walk vs bus vs scooter, including "walk to the nearest stop, take route X", and renders the 3 options on a map inside the chat. Use for any "how do I get from A to B" question — do NOT also open the planner or switch to the campus map.',
     input_schema: {
       type: 'object',
       properties: {
@@ -421,19 +434,6 @@ export const TOOL_DEFS = [
         route: { type: 'string', description: 'Route code to select first. Optional.' },
       },
       required: ['stop_ids'],
-    },
-  },
-  {
-    name: 'open_planner',
-    description:
-      'Open the route planner pre-filled with two campus locations, so the user sees the walk/bus/scooter comparison. Call this when the user is planning a trip between locations.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        from: { type: 'string', description: 'Origin campus location.' },
-        to: { type: 'string', description: 'Destination campus location.' },
-      },
-      required: ['from', 'to'],
     },
   },
 ];
