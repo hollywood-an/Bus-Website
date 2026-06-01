@@ -22,9 +22,9 @@ export default function BusCapacityTracker() {
   const reports = useReports();
   const map = useGoogleMap(view);
   const chat = useChat({
-    busReports: reports.busReports,
-    busDownReports: reports.busDownReports,
-    getCapacityInfo: reports.getCapacityInfo
+    getCapacityInfo: reports.getCapacityInfo,
+    down: reports.down,
+    nameForCode: reports.nameForCode
   });
 
   const currentTheme = THEME_COLORS[reports.selectedTheme];
@@ -40,19 +40,22 @@ export default function BusCapacityTracker() {
 
         {view === 'check' && (
           <CheckView
-            busReports={reports.busReports}
-            busDownReports={reports.busDownReports}
-            getCapacityInfo={reports.getCapacityInfo}
+            routes={reports.routes}
+            capacity={reports.capacity}
+            down={reports.down}
             checkStatus={reports.checkStatus}
+            nameForCode={reports.nameForCode}
             currentTheme={currentTheme}
           />
         )}
 
         {view === 'report' && (
           <ReportView
-            busDownReports={reports.busDownReports}
+            routes={reports.routes}
+            down={reports.down}
             submitCapacityReport={reports.submitCapacityReport}
             submitBusDownReport={reports.submitBusDownReport}
+            nameForCode={reports.nameForCode}
             currentTheme={currentTheme}
           />
         )}
