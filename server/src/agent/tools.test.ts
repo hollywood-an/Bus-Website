@@ -103,3 +103,30 @@ describe('action tools (propose, never write)', () => {
     expect(directiveFor('submit_capacity_report', await dispatchTool('submit_capacity_report', { route: 'ZZZ', level: 2 }))).toBeNull();
   });
 });
+
+describe('UI-control tools (drive the app, emit ui_directive)', () => {
+  it('focus_map_on_route validates and yields a ui_directive', async () => {
+    const r: any = await dispatchTool('focus_map_on_route', { route: 'cc' });
+    expect(r.ok).toBe(true);
+    expect(r.route).toBe('CC');
+    expect(directiveFor('focus_map_on_route', r)).toEqual({ type: 'ui_directive', action: 'focus_map_on_route', args: { route: 'CC' } });
+
+    const bad: any = await dispatchTool('focus_map_on_route', { route: 'ZZZ' });
+    expect(bad.error).toBe('unknown_route');
+    expect(directiveFor('focus_map_on_route', bad)).toBeNull();
+  });
+
+  it('highlight_stops carries the stop ids', async () => {
+    const r: any = await dispatchTool('highlight_stops', { stop_ids: ['501', '94'], route: 'CC' });
+    expect(r.ok).toBe(true);
+    expect(directiveFor('highlight_stops', r)).toMatchObject({ type: 'ui_directive', action: 'highlight_stops', args: { stopIds: ['501', '94'], route: 'CC' } });
+    expect((await dispatchTool('highlight_stops', { stop_ids: [] })) as any).toHaveProperty('error', 'no_stops');
+  });
+
+  it('open_planner resolves locations and yields a ui_directive', async () => {
+    const r: any = await dispatchTool('open_planner', { from: 'the union', to: 'rpac' });
+    expect(r.ok).toBe(true);
+    expect(directiveFor('open_planner', r)).toEqual({ type: 'ui_directive', action: 'open_planner', args: { from: 'Ohio Union', to: 'RPAC' } });
+    expect((await dispatchTool('open_planner', { from: 'Narnia', to: 'RPAC' })) as any).toHaveProperty('error', 'unknown_location');
+  });
+});

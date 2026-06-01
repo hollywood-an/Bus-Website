@@ -1,12 +1,9 @@
-import { useState } from 'react';
 import { TrendingUp } from 'lucide-react';
 import { OSU_LOCATIONS } from '../data/locations';
 import { ROUTE_TIMES } from '../data/routeTimes';
 
-export default function PlannerView() {
-  const [fromLocation, setFromLocation] = useState('');
-  const [toLocation, setToLocation] = useState('');
-
+// from/to are controlled by App so the agent's open_planner directive can pre-fill them.
+export default function PlannerView({ fromLocation, toLocation, setFromLocation, setToLocation }) {
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
       <h2 className="text-xl font-bold mb-4 flex items-center gap-2">

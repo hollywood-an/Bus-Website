@@ -16,6 +16,7 @@ export function useGoogleMap(view) {
   const [selectedBusRoute, setSelectedBusRoute] = useState('all');
   const [feedLive, setFeedLive] = useState(true);
   const [vehicleSource, setVehicleSource] = useState('mock');
+  const [highlightedStops, setHighlightStops] = useState([]); // stop ids the agent asked to emphasize
 
   const mapRef = useRef(null);
   const infoWindowRef = useRef(null);
@@ -101,6 +102,8 @@ export function useGoogleMap(view) {
 
       const codes = selectedBusRoute === 'all' ? routes.map((r) => r.code) : [selectedBusRoute];
       const bounds = new window.google.maps.LatLngBounds();
+      const highlightBounds = new window.google.maps.LatLngBounds();
+      const highlightSet = new Set(highlightedStops);
       const weight = selectedBusRoute === 'all' ? 3 : 5;
       const opacity = selectedBusRoute === 'all' ? 0.7 : 0.9;
 
@@ -125,17 +128,19 @@ export function useGoogleMap(view) {
 
         for (const stop of detail.stops) {
           const position = { lat: stop.latitude, lng: stop.longitude };
+          const isHighlighted = highlightSet.has(stop.id);
           const marker = new window.google.maps.Marker({
             position,
             map,
             title: stop.name,
+            zIndex: isHighlighted ? 600 : undefined,
             icon: {
               path: window.google.maps.SymbolPath.CIRCLE,
-              scale: 6,
+              scale: isHighlighted ? 11 : 6,
               fillColor: color,
               fillOpacity: 1,
-              strokeColor: '#ffffff',
-              strokeWeight: 1.5,
+              strokeColor: isHighlighted ? '#111111' : '#ffffff',
+              strokeWeight: isHighlighted ? 3 : 1.5,
             },
           });
           marker.addListener('click', () => {
@@ -146,16 +151,21 @@ export function useGoogleMap(view) {
           });
           routeOverlaysRef.current.push(marker);
           bounds.extend(position);
+          if (isHighlighted) highlightBounds.extend(position);
         }
       }
 
-      if (!cancelled && !bounds.isEmpty()) map.fitBounds(bounds);
+      // Zoom to the highlighted stops if any were requested, otherwise fit the whole selection.
+      if (!cancelled) {
+        if (!highlightBounds.isEmpty()) map.fitBounds(highlightBounds, 96);
+        else if (!bounds.isEmpty()) map.fitBounds(bounds);
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [mapLoaded, routes, selectedBusRoute, view, colorFor]);
+  }, [mapLoaded, routes, selectedBusRoute, view, colorFor, highlightedStops]);
 
   // 4) Poll vehicles and redraw their markers while on the map view.
   useEffect(() => {
@@ -212,5 +222,5 @@ export function useGoogleMap(view) {
     }
   }, [view]);
 
-  return { mapLoaded, routes, selectedBusRoute, setSelectedBusRoute, feedLive, vehicleSource };
+  return { mapLoaded, routes, selectedBusRoute, setSelectedBusRoute, feedLive, vehicleSource, setHighlightStops };
 }

@@ -224,6 +224,29 @@ function proposeDown(input: { route?: unknown }) {
   };
 }
 
+// --- UI-control tools: drive the app's own UI. They don't change data — they return a small
+// success object, and directiveFor() turns it into a ui_directive the client dispatcher applies
+// mid-answer (the agent operates the product, it doesn't just describe it). ---
+
+function focusMapOnRoute(input: { route?: unknown }) {
+  const code = knownCode(input.route);
+  if (!code) return { error: 'unknown_route', knownRoutes: feed.getRoutes().map((r) => r.code) };
+  return { ok: true, route: code, shown: `Showing ${nameForCode(code)} (${code}) on the map.` };
+}
+
+function highlightStops(input: { stop_ids?: unknown; route?: unknown }) {
+  const ids = Array.isArray(input.stop_ids) ? input.stop_ids.map(String).slice(0, 25) : [];
+  if (ids.length === 0) return { error: 'no_stops' };
+  return { ok: true, stopIds: ids, route: knownCode(input.route), shown: `Highlighted ${ids.length} stop(s).` };
+}
+
+function openPlanner(input: { from?: unknown; to?: unknown }) {
+  const from = resolveLocation(typeof input.from === 'string' ? input.from : '');
+  const to = resolveLocation(typeof input.to === 'string' ? input.to : '');
+  if (!from || !to) return { error: 'unknown_location', knownLocations: LOCATIONS };
+  return { ok: true, from, to, shown: `Opened the planner for ${from} → ${to}.` };
+}
+
 export async function dispatchTool(name: string, input: Record<string, unknown>): Promise<unknown> {
   switch (name) {
     case 'get_live_buses':
@@ -246,6 +269,12 @@ export async function dispatchTool(name: string, input: Record<string, unknown>)
       return proposeCapacity(input);
     case 'report_bus_down':
       return proposeDown(input);
+    case 'focus_map_on_route':
+      return focusMapOnRoute(input);
+    case 'highlight_stops':
+      return highlightStops(input);
+    case 'open_planner':
+      return openPlanner(input);
     default:
       return { error: `unknown_tool:${name}` };
   }
@@ -269,6 +298,15 @@ export function directiveFor(name: string, result: unknown): Directive | null {
         ? { kind: 'capacity', route: r.route, name: r.name, level: r.level, label: r.label, points: r.points }
         : { kind: 'down', route: r.route, name: r.name, points: r.points };
     return { type: 'confirm', action: name, args };
+  }
+  if (name === 'focus_map_on_route' && r.ok) {
+    return { type: 'ui_directive', action: name, args: { route: r.route } };
+  }
+  if (name === 'highlight_stops' && r.ok) {
+    return { type: 'ui_directive', action: name, args: { stopIds: r.stopIds, route: r.route } };
+  }
+  if (name === 'open_planner' && r.ok) {
+    return { type: 'ui_directive', action: name, args: { from: r.from, to: r.to } };
   }
   return null;
 }
@@ -360,6 +398,42 @@ export const TOOL_DEFS = [
       type: 'object',
       properties: { route: { type: 'string', description: 'Route code, e.g. NWC.' } },
       required: ['route'],
+    },
+  },
+  {
+    name: 'focus_map_on_route',
+    description:
+      'Show a route on the campus map (switches to the map view, selects the route, fits it, shows its buses). Call this whenever you talk about a specific route so the user SEES it.',
+    input_schema: {
+      type: 'object',
+      properties: { route: { type: 'string', description: 'Route code, e.g. CC.' } },
+      required: ['route'],
+    },
+  },
+  {
+    name: 'highlight_stops',
+    description:
+      'Emphasize specific stops on the map (use stop ids from get_stops). Optionally pass the route to select it first. Pair with focus_map_on_route to point at the stops you mention.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        stop_ids: { type: 'array', items: { type: 'string' }, description: 'Stop ids from get_stops.' },
+        route: { type: 'string', description: 'Route code to select first. Optional.' },
+      },
+      required: ['stop_ids'],
+    },
+  },
+  {
+    name: 'open_planner',
+    description:
+      'Open the route planner pre-filled with two campus locations, so the user sees the walk/bus/scooter comparison. Call this when the user is planning a trip between locations.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'Origin campus location.' },
+        to: { type: 'string', description: 'Destination campus location.' },
+      },
+      required: ['from', 'to'],
     },
   },
 ];
