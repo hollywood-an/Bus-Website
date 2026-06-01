@@ -1,14 +1,32 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Footprints, Bus, Zap } from 'lucide-react';
 import { loadMaps } from '../lib/loadMaps';
 
-// Inline map for a planned trip. Draws the walk/scooter path (gray — real Directions polyline, or a
-// straight line if none), the bus route (route color) with board/alight markers + dashed walk-to-stop
-// connectors, and A/B endpoints. Used inside the AI assistant and the Route Planner. `geometry` is the
-// show_trip directive shape: { from, to, walk:{encodedPolyline}, bus:{routeColor,routePolyline,board,alight}|null }.
+// Google-Maps-style trip map: shows ONE mode at a time (fastest by default), with a tab per mode
+// (walk / bus / scooter) carrying its ETA. Tap a tab to swap which route is drawn. `geometry` is the
+// show_trip shape: { from, to, fastest, walk:{encodedPolyline,min}, scooter:{min}, bus:{...,min}|null }.
+const WALK_COLOR = '#6b7280';
+const SCOOTER_COLOR = '#7c3aed';
+
+const MODE_META = {
+  walk: { label: 'Walk', icon: Footprints },
+  bus: { label: 'Bus', icon: Bus },
+  scooter: { label: 'Scooter', icon: Zap },
+};
+
 export default function TripMap({ geometry }) {
+  const [mode, setMode] = useState(geometry?.fastest || 'walk');
   const divRef = useRef(null);
   const mapRef = useRef(null);
   const overlaysRef = useRef([]);
+
+  // Reset to the fastest mode when a new trip comes in.
+  useEffect(() => {
+    setMode(geometry?.fastest || 'walk');
+  }, [geometry]);
+
+  const modes = ['walk', 'bus', 'scooter'].filter((m) => m !== 'bus' || geometry?.bus);
+  const minFor = (m) => (m === 'walk' ? geometry?.walk?.min : m === 'scooter' ? geometry?.scooter?.min : geometry?.bus?.min);
 
   useEffect(() => {
     if (!geometry?.from || !geometry?.to) return;
@@ -35,14 +53,7 @@ export default function TripMap({ geometry }) {
         const a = { lat: geometry.from.lat, lng: geometry.from.lng };
         const b = { lat: geometry.to.lat, lng: geometry.to.lng };
 
-        // Walk / scooter path (same line; scooter just has a faster ETA).
-        const walkPath =
-          geometry.walk?.encodedPolyline ? maps.geometry.encoding.decodePath(geometry.walk.encodedPolyline) : [a, b];
-        keep(new maps.Polyline({ path: walkPath, map, strokeColor: '#6b7280', strokeOpacity: 0.9, strokeWeight: 4 }));
-        walkPath.forEach((p) => bounds.extend(p));
-
-        // Bus route + board/alight + dashed access walks.
-        if (geometry.bus) {
+        if (mode === 'bus' && geometry.bus) {
           const color = geometry.bus.routeColor || '#005716';
           if (geometry.bus.routePolyline) {
             const busPath = maps.geometry.encoding.decodePath(geometry.bus.routePolyline);
@@ -51,6 +62,9 @@ export default function TripMap({ geometry }) {
           }
           const board = { lat: geometry.bus.board.lat, lng: geometry.bus.board.lng };
           const alight = { lat: geometry.bus.alight.lat, lng: geometry.bus.alight.lng };
+          const dash = { icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '10px' };
+          keep(new maps.Polyline({ path: [a, board], map, strokeOpacity: 0, icons: [dash] }));
+          keep(new maps.Polyline({ path: [alight, b], map, strokeOpacity: 0, icons: [dash] }));
           keep(
             new maps.Marker({
               position: board,
@@ -67,39 +81,71 @@ export default function TripMap({ geometry }) {
               icon: { path: maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#fff', fillOpacity: 1, strokeColor: color, strokeWeight: 3 },
             }),
           );
-          const dash = { icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '10px' };
-          keep(new maps.Polyline({ path: [a, board], map, strokeOpacity: 0, icons: [dash] }));
-          keep(new maps.Polyline({ path: [alight, b], map, strokeOpacity: 0, icons: [dash] }));
           bounds.extend(board);
           bounds.extend(alight);
+        } else {
+          // walk or scooter — same direct path, different color
+          const path = geometry.walk?.encodedPolyline ? maps.geometry.encoding.decodePath(geometry.walk.encodedPolyline) : [a, b];
+          keep(
+            new maps.Polyline({
+              path,
+              map,
+              strokeColor: mode === 'scooter' ? SCOOTER_COLOR : WALK_COLOR,
+              strokeOpacity: 0.95,
+              strokeWeight: 5,
+            }),
+          );
+          path.forEach((p) => bounds.extend(p));
         }
 
         keep(new maps.Marker({ position: a, map, label: 'A', title: geometry.from.name }));
         keep(new maps.Marker({ position: b, map, label: 'B', title: geometry.to.name }));
         bounds.extend(a);
         bounds.extend(b);
-
-        map.fitBounds(bounds, 36);
+        map.fitBounds(bounds, 40);
       })
       .catch(() => {});
 
     return () => {
       cancelled = true;
     };
-  }, [geometry]);
+  }, [geometry, mode]);
 
   if (!geometry) return null;
+
   return (
     <div>
-      <div ref={divRef} className="rounded-lg overflow-hidden border border-gray-300" style={{ height: 220, width: '100%' }} />
-      <div className="mt-1.5 flex flex-wrap gap-3 text-xs text-muted">
-        <span className="inline-flex items-center gap-1"><span className="w-3 h-0.5 bg-gray-500 inline-block" /> walk / scooter</span>
-        {geometry.bus && (
-          <span className="inline-flex items-center gap-1">
-            <span className="w-3 h-0.5 inline-block" style={{ backgroundColor: geometry.bus.routeColor || '#005716' }} /> bus route
-          </span>
-        )}
-        <span>A → from · B → to{geometry.bus ? ' · ● board / ○ get off' : ''}</span>
+      <div className="mb-2 flex gap-1.5">
+        {modes.map((m) => {
+          const Icon = MODE_META[m].icon;
+          const active = mode === m;
+          const fastest = geometry.fastest === m;
+          return (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              aria-pressed={active}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-bold transition-colors ${
+                active ? 'border-scarlet bg-scarlet-wash text-scarlet-ink' : 'border-line text-ink-soft hover:bg-surface-2'
+              }`}
+            >
+              <Icon size={15} />
+              {MODE_META[m].label}
+              <span className="font-mono">{minFor(m)}m</span>
+              {fastest && (
+                <span className="rounded-full bg-ok px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white">fast</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div ref={divRef} className="h-[240px] w-full overflow-hidden rounded-lg border border-line" />
+
+      <div className="mt-1.5 text-xs text-muted">
+        {mode === 'bus' && geometry.bus
+          ? `Board ${geometry.bus.board.name} → ${geometry.bus.alight.name} on ${geometry.bus.routeName}. Dashed = walk to/from the stop.`
+          : `${mode === 'scooter' ? 'Scooter' : 'Walking'} route, A → B.`}
       </div>
     </div>
   );

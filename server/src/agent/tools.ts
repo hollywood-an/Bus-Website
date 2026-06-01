@@ -195,14 +195,18 @@ async function planRoute(input: { from?: unknown; to?: unknown }) {
     _geometry: {
       from: { name: result.from.name, lat: result.from.lat, lng: result.from.lng },
       to: { name: result.to.name, lat: result.to.lat, lng: result.to.lng },
-      walk: { encodedPolyline: result.walkPolyline },
+      fastest: result.fastest,
+      walk: { encodedPolyline: result.walkPolyline, min: result.walkMin },
+      scooter: { min: result.scooterMin },
       bus: bus
         ? {
             routeCode: bus.routeCode,
+            routeName: bus.routeName,
             routeColor: bus.routeColor,
             routePolyline: bus.routePolyline,
             board: bus.board,
             alight: bus.alight,
+            min: bus.totalMin,
           }
         : null,
     },
