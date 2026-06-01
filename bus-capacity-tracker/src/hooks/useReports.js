@@ -1,183 +1,221 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { CAPACITY_LEVELS } from '../data/capacity';
 
-// Owns the crowdsourced report state (capacity + bus-down), gamification points/theme, and
-// the transient notification/reward UI. Behavior is preserved verbatim from the original
-// App.jsx handlers; only the surrounding structure changed (Phase 0).
-//
-// View-local form inputs (which route/level the user picked) live in the view components and
-// are passed in as arguments here, so the data logic stays free of UI form state.
+// Phase 1.6: crowdsourced reports are now server-owned and multi-user. This hook reads aggregates
+// from /api/reports (decay + the anti-poisoning dampener happen server-side) and submits via
+// POST /api/reports. Only personal state (points, theme) stays in localStorage; a cached snapshot
+// of the last good aggregates is kept there too as a read-only offline fallback.
+const REPORTS_POLL_MS = 20000;
+
+function makeClientId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return `c-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function useReports() {
-  const [busReports, setBusReports] = useState({});
-  const [busDownReports, setBusDownReports] = useState({});
+  const [routes, setRoutes] = useState([]); // [{ code, name, color }]
+  const [capacity, setCapacity] = useState([]); // RouteCapacity[]
+  const [down, setDown] = useState([]); // DownStatus[]
   const [userPoints, setUserPoints] = useState(0);
   const [selectedTheme, setSelectedTheme] = useState(0);
   const [notification, setNotification] = useState('');
   const [showReward, setShowReward] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const clientIdRef = useRef('');
 
+  // Personal state + an anonymous client id (used for rate-limiting + distinct-reporter counting).
   useEffect(() => {
-    const loadData = async () => {
+    (async () => {
       try {
-        const reportsResult = await window.storage.get('bus-reports');
-        const pointsResult = await window.storage.get('user-points');
-        const themeResult = await window.storage.get('selected-theme');
-        const downReportsResult = await window.storage.get('bus-down-reports');
-
-        if (reportsResult?.value) {
-          setBusReports(JSON.parse(reportsResult.value));
-        }
-        if (pointsResult?.value) {
-          setUserPoints(parseInt(pointsResult.value));
-        }
-        if (themeResult?.value) {
-          setSelectedTheme(parseInt(themeResult.value));
-        }
-        if (downReportsResult?.value) {
-          setBusDownReports(JSON.parse(downReportsResult.value));
+        const pts = await window.storage.get('user-points');
+        const theme = await window.storage.get('selected-theme');
+        if (pts?.value) setUserPoints(parseInt(pts.value));
+        if (theme?.value) setSelectedTheme(parseInt(theme.value));
+        const existing = await window.storage.get('client-id');
+        if (existing?.value) {
+          clientIdRef.current = existing.value;
+        } else {
+          const id = makeClientId();
+          await window.storage.set('client-id', id);
+          clientIdRef.current = id;
         }
       } catch {
-        console.log('First time loading app');
+        clientIdRef.current = makeClientId();
       }
-    };
-    loadData();
+    })();
   }, []);
 
-  const saveData = async (reports, points, theme, downReports = busDownReports) => {
-    try {
-      await window.storage.set('bus-reports', JSON.stringify(reports));
-      await window.storage.set('user-points', points.toString());
-      await window.storage.set('selected-theme', theme.toString());
-      await window.storage.set('bus-down-reports', JSON.stringify(downReports));
-    } catch (error) {
-      console.error('Error saving data:', error);
-    }
-  };
-
-  const getCapacityInfo = (busId) => {
-    const reports = busReports[busId] || [];
-    const validReports = reports.filter(r => r.expiresAt > Date.now());
-
-    if (validReports.length === 0) return null;
-
-    const avgCapacity = Math.round(
-      validReports.reduce((sum, r) => sum + r.capacity, 0) / validReports.length
-    );
-
-    return {
-      level: CAPACITY_LEVELS[avgCapacity],
-      reportCount: validReports.length
+  // Route list (codes + names + colors) for dropdowns and code↔name mapping.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/routes')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setRoutes(Array.isArray(d.routes) ? d.routes : []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
     };
-  };
+  }, []);
 
-  const submitCapacityReport = async (reportBusId, reportCapacity) => {
-    if (!reportBusId.trim()) return;
-
-    const timestamp = Date.now();
-    const newReports = { ...busReports };
-
-    if (!newReports[reportBusId]) {
-      newReports[reportBusId] = [];
-    }
-
-    newReports[reportBusId].push({
-      capacity: reportCapacity,
-      timestamp,
-      expiresAt: timestamp + (30 * 60 * 1000)
-    });
-
-    Object.keys(newReports).forEach(busId => {
-      newReports[busId] = newReports[busId].filter(r => r.expiresAt > timestamp);
-      if (newReports[busId].length === 0) {
-        delete newReports[busId];
+  // Poll the shared report aggregates; cache them for offline display.
+  const loadReports = useCallback(async () => {
+    try {
+      const d = await fetch('/api/reports').then((r) => r.json());
+      setCapacity(d.capacity ?? []);
+      setDown(d.down ?? []);
+      setOffline(false);
+      try {
+        await window.storage.set('reports-cache', JSON.stringify({ capacity: d.capacity, down: d.down }));
+      } catch {
+        /* storage may be unavailable */
       }
-    });
+    } catch {
+      setOffline(true);
+      try {
+        const cached = await window.storage.get('reports-cache');
+        if (cached?.value) {
+          const parsed = JSON.parse(cached.value);
+          setCapacity(parsed.capacity ?? []);
+          setDown(parsed.down ?? []);
+        }
+      } catch {
+        /* no cache */
+      }
+    }
+  }, []);
 
-    const newPoints = userPoints + 1;
-    setBusReports(newReports);
-    setUserPoints(newPoints);
-    await saveData(newReports, newPoints, selectedTheme);
+  useEffect(() => {
+    loadReports();
+    const id = setInterval(loadReports, REPORTS_POLL_MS);
+    return () => clearInterval(id);
+  }, [loadReports]);
 
-    setShowReward(true);
-    setNotification(`Report submitted! +1 point (Total: ${newPoints})`);
+  const nameForCode = useCallback((code) => routes.find((r) => r.code === code)?.name ?? code, [routes]);
 
+  // Resolve a route code OR full name to a code (so the chat fallback, which uses names, still works).
+  const codeForKey = useCallback(
+    (key) => {
+      if (!key) return null;
+      const up = String(key).toUpperCase();
+      if (routes.some((r) => r.code === up)) return up;
+      const byName = routes.find((r) => r.name.toLowerCase() === String(key).toLowerCase());
+      return byName ? byName.code : null;
+    },
+    [routes],
+  );
+
+  const getCapacityInfo = useCallback(
+    (key) => {
+      const code = codeForKey(key);
+      if (!code) return null;
+      const c = capacity.find((x) => x.route === code);
+      if (!c) return null;
+      return {
+        level: CAPACITY_LEVELS[c.level],
+        reportCount: c.reportCount,
+        reporterCount: c.reporterCount,
+        confident: c.confident,
+        newestAt: c.newestAt,
+        code,
+      };
+    },
+    [capacity, codeForKey],
+  );
+
+  const flash = (message, reward = false) => {
+    setNotification(message);
+    if (reward) setShowReward(true);
     setTimeout(() => {
-      setShowReward(false);
       setNotification('');
+      setShowReward(false);
     }, 3000);
   };
 
-  const submitBusDownReport = async (downBusRoute) => {
-    if (!downBusRoute.trim()) return;
-
-    const timestamp = Date.now();
-    const newDownReports = { ...busDownReports };
-
-    if (!newDownReports[downBusRoute]) {
-      newDownReports[downBusRoute] = [];
+  const award = async (delta, message) => {
+    const next = userPoints + delta;
+    setUserPoints(next);
+    try {
+      await window.storage.set('user-points', String(next));
+    } catch {
+      /* ignore */
     }
-
-    newDownReports[downBusRoute].push({
-      timestamp,
-      expiresAt: timestamp + (60 * 60 * 1000)
-    });
-
-    Object.keys(newDownReports).forEach(route => {
-      newDownReports[route] = newDownReports[route].filter(r => r.expiresAt > timestamp);
-      if (newDownReports[route].length === 0) {
-        delete newDownReports[route];
-      }
-    });
-
-    const newPoints = userPoints + 2;
-    setBusDownReports(newDownReports);
-    setUserPoints(newPoints);
-    await saveData(busReports, newPoints, selectedTheme, newDownReports);
-
-    setShowReward(true);
-    setNotification(`Bus down report submitted! +2 points (Total: ${newPoints}) 🚨`);
-
-    setTimeout(() => {
-      setShowReward(false);
-      setNotification('');
-    }, 3000);
+    flash(message, true);
   };
 
-  const checkStatus = (checkBusId) => {
-    if (!checkBusId.trim()) return;
+  const postReport = async (payload) => {
+    const res = await fetch('/api/reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-client-id': clientIdRef.current },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`report_${res.status}`);
+    return res.json();
+  };
 
-    const reports = busReports[checkBusId] || [];
-    const validReports = reports.filter(r => r.expiresAt > Date.now());
+  const submitCapacityReport = async (code, level) => {
+    if (!code) return;
+    try {
+      const d = await postReport({ kind: 'capacity', route: code, level });
+      setCapacity(d.capacity ?? []);
+      setDown(d.down ?? []);
+      await award(d.pointsDelta ?? 1, `Reported ${nameForCode(code)} — +${d.pointsDelta ?? 1} point`);
+    } catch {
+      flash("Couldn't submit (offline?). Try again.");
+    }
+  };
 
-    if (validReports.length === 0) {
-      setNotification(`No recent reports for ${checkBusId}`);
+  const submitBusDownReport = async (code) => {
+    if (!code) return;
+    try {
+      const d = await postReport({ kind: 'down', route: code });
+      setCapacity(d.capacity ?? []);
+      setDown(d.down ?? []);
+      await award(d.pointsDelta ?? 2, `Reported ${nameForCode(code)} down — +${d.pointsDelta ?? 2} points`);
+    } catch {
+      flash("Couldn't submit (offline?). Try again.");
+    }
+  };
+
+  const checkStatus = (code) => {
+    if (!code) return;
+    const info = getCapacityInfo(code);
+    if (!info) {
+      setNotification(`No recent reports for ${nameForCode(code)}`);
     } else {
-      const avgCapacity = Math.round(
-        validReports.reduce((sum, r) => sum + r.capacity, 0) / validReports.length
+      const tag = info.confident ? '' : ' (unconfirmed)';
+      setNotification(
+        `${nameForCode(code)}: ${info.level.label} ${info.level.icon} — ${info.reporterCount} reporter${info.reporterCount !== 1 ? 's' : ''}${tag}`,
       );
-      const level = CAPACITY_LEVELS[avgCapacity];
-      setNotification(`${checkBusId}: ${level.label} ${level.icon} (${validReports.length} recent reports)`);
     }
-
     setTimeout(() => setNotification(''), 5000);
   };
 
-  // Preserved from the original (currently no UI calls it — there is no theme picker).
+  // Preserved from the original (no theme picker is wired in the UI yet).
   const changeTheme = async (index) => {
     setSelectedTheme(index);
-    await saveData(busReports, userPoints, index);
+    try {
+      await window.storage.set('selected-theme', String(index));
+    } catch {
+      /* ignore */
+    }
   };
 
   return {
-    busReports,
-    busDownReports,
+    routes,
+    capacity,
+    down,
     userPoints,
     selectedTheme,
     notification,
     showReward,
+    offline,
     getCapacityInfo,
+    nameForCode,
     submitCapacityReport,
     submitBusDownReport,
     checkStatus,
-    changeTheme
+    changeTheme,
   };
 }

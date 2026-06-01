@@ -4,3 +4,7 @@ dist
 .env.*
 !.env.example
 *.log
+
+# SQLite report store (local data)
+reports.db
+reports.db-*
