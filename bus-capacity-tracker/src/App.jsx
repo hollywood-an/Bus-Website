@@ -24,7 +24,9 @@ export default function BusCapacityTracker() {
   const chat = useChat({
     getCapacityInfo: reports.getCapacityInfo,
     down: reports.down,
-    nameForCode: reports.nameForCode
+    nameForCode: reports.nameForCode,
+    submitCapacityReport: reports.submitCapacityReport,
+    submitBusDownReport: reports.submitBusDownReport
   });
 
   const currentTheme = THEME_COLORS[reports.selectedTheme];
@@ -81,6 +83,9 @@ export default function BusCapacityTracker() {
             isAiThinking={chat.isAiThinking}
             sendMessage={chat.sendMessage}
             currentTheme={currentTheme}
+            pendingConfirm={chat.pendingConfirm}
+            confirmPending={chat.confirmPending}
+            cancelPending={chat.cancelPending}
           />
         )}
 

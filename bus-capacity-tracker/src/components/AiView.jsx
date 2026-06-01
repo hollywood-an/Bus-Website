@@ -1,6 +1,16 @@
 import { MessageCircle, Send } from 'lucide-react';
 
-export default function AiView({ chatMessages, chatInput, setChatInput, isAiThinking, sendMessage, currentTheme }) {
+export default function AiView({
+  chatMessages,
+  chatInput,
+  setChatInput,
+  isAiThinking,
+  sendMessage,
+  currentTheme,
+  pendingConfirm,
+  confirmPending,
+  cancelPending,
+}) {
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col h-[600px]">
       <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -48,6 +58,30 @@ export default function AiView({ chatMessages, chatInput, setChatInput, isAiThin
           </div>
         )}
       </div>
+
+      {pendingConfirm && (
+        <div className="mb-3 border-2 border-amber-300 bg-amber-50 rounded-lg p-3">
+          <p className="text-sm text-gray-800 mb-2">
+            Submit this report? <strong>{pendingConfirm.args.name}</strong>{' '}
+            {pendingConfirm.args.kind === 'capacity' ? `— ${pendingConfirm.args.label}` : '— reported down'}{' '}
+            <span className="text-gray-500">(+{pendingConfirm.args.points} pts)</span>
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={confirmPending}
+              className="bg-green-600 text-white px-3 py-1.5 rounded text-sm font-semibold hover:bg-green-700"
+            >
+              Confirm &amp; submit
+            </button>
+            <button
+              onClick={cancelPending}
+              className="bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-sm font-semibold hover:bg-gray-300"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <input
