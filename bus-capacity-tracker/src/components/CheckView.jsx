@@ -13,7 +13,7 @@ export default function CheckView({ routes, capacity, down }) {
     <section className="mx-auto max-w-2xl">
       <h1 className="text-2xl">Live crowding</h1>
       <p className="mt-1 text-sm text-muted">
-        Crowdsourced fullness for every route.{empty ? ' No reports yet — be the first to report.' : ''}
+        Crowdsourced fullness for every route.{empty ? ' No reports yet. Be the first to report.' : ''}
       </p>
 
       <div className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface">
