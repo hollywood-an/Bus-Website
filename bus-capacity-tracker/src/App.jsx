@@ -18,15 +18,37 @@ import AiView from './components/AiView';
 // verbatim from the original monolith in the Phase 0 decomposition.
 export default function BusCapacityTracker() {
   const [view, setView] = useState('map');
+  const [plannerFrom, setPlannerFrom] = useState('');
+  const [plannerTo, setPlannerTo] = useState('');
 
   const reports = useReports();
   const map = useGoogleMap(view);
+
+  // Apply UI directives the agent streams (Phase 4): it operates the app, not just describes it.
+  const applyDirective = (d) => {
+    if (!d?.action) return;
+    if (d.action === 'focus_map_on_route') {
+      map.setHighlightStops([]);
+      if (d.args?.route) map.setSelectedBusRoute(d.args.route);
+      setView('map');
+    } else if (d.action === 'highlight_stops') {
+      if (d.args?.route) map.setSelectedBusRoute(d.args.route);
+      map.setHighlightStops(Array.isArray(d.args?.stopIds) ? d.args.stopIds : []);
+      setView('map');
+    } else if (d.action === 'open_planner') {
+      if (d.args?.from) setPlannerFrom(d.args.from);
+      if (d.args?.to) setPlannerTo(d.args.to);
+      setView('planner');
+    }
+  };
+
   const chat = useChat({
     getCapacityInfo: reports.getCapacityInfo,
     down: reports.down,
     nameForCode: reports.nameForCode,
     submitCapacityReport: reports.submitCapacityReport,
-    submitBusDownReport: reports.submitBusDownReport
+    submitBusDownReport: reports.submitBusDownReport,
+    onUiDirective: applyDirective
   });
 
   const currentTheme = THEME_COLORS[reports.selectedTheme];
@@ -73,7 +95,14 @@ export default function BusCapacityTracker() {
           />
         )}
 
-        {view === 'planner' && <PlannerView />}
+        {view === 'planner' && (
+          <PlannerView
+            fromLocation={plannerFrom}
+            toLocation={plannerTo}
+            setFromLocation={setPlannerFrom}
+            setToLocation={setPlannerTo}
+          />
+        )}
 
         {view === 'ai' && (
           <AiView
