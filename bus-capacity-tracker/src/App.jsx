@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { THEME_COLORS } from './data/themes';
+import { Award } from 'lucide-react';
 import { useReports } from './hooks/useReports';
 import { useGoogleMap } from './hooks/useGoogleMap';
 import { useChat } from './hooks/useChat';
 import Header from './components/Header';
-import Notification from './components/Notification';
 import Nav from './components/Nav';
+import Toast from './components/Toast';
 import RewardOverlay from './components/RewardOverlay';
 import CheckView from './components/CheckView';
 import ReportView from './components/ReportView';
@@ -13,9 +13,20 @@ import MapView from './components/MapView';
 import PlannerView from './components/PlannerView';
 import AiView from './components/AiView';
 
-// Thin shell: owns only the active view and wires the data hooks into the view components.
-// All behavior lives in the hooks (useReports/useGoogleMap/useChat) and components/ — extracted
-// verbatim from the original monolith in the Phase 0 decomposition.
+function Points({ value }) {
+  return (
+    <div
+      className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1"
+      title="Points earned from reporting (local, just for fun)"
+    >
+      <Award size={15} className="text-scarlet-ink" />
+      <span className="font-mono text-sm font-semibold text-ink">{value}</span>
+    </div>
+  );
+}
+
+// App shell: brand + nav (left rail on desktop, bottom tab bar on mobile) around a content pane the
+// map/results dominate. State lives in hooks; views are presentational.
 export default function BusCapacityTracker() {
   const [view, setView] = useState('map');
   const [plannerFrom, setPlannerFrom] = useState('');
@@ -36,7 +47,7 @@ export default function BusCapacityTracker() {
       map.setHighlightStops(Array.isArray(d.args?.stopIds) ? d.args.stopIds : []);
       setView('map');
     }
-    // show_trip is handled inside useChat (renders the inline map) — no view switch.
+    // show_trip renders inline in the assistant (handled in useChat) — no view switch.
   };
 
   const chat = useChat({
@@ -45,79 +56,91 @@ export default function BusCapacityTracker() {
     nameForCode: reports.nameForCode,
     submitCapacityReport: reports.submitCapacityReport,
     submitBusDownReport: reports.submitBusDownReport,
-    onUiDirective: applyDirective
+    onUiDirective: applyDirective,
   });
 
-  const currentTheme = THEME_COLORS[reports.selectedTheme];
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4">
-      <div className="max-w-4xl mx-auto">
-        <Header currentTheme={currentTheme} userPoints={reports.userPoints} />
+    <div className="min-h-screen bg-paper text-ink">
+      {/* mobile top bar */}
+      <header
+        className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-surface/95 px-4 py-2.5 backdrop-blur md:hidden"
+        style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top))' }}
+      >
+        <Header compact />
+        <Points value={reports.userPoints} />
+      </header>
 
-        <Notification notification={reports.notification} currentTheme={currentTheme} />
+      <div className="md:flex">
+        {/* desktop rail */}
+        <aside className="hidden border-r border-line bg-surface-2 md:sticky md:top-0 md:flex md:h-screen md:w-60 md:shrink-0 md:flex-col md:px-3 md:py-4">
+          <div className="px-2">
+            <Header />
+          </div>
+          <div className="mt-6 flex-1">
+            <Nav view={view} setView={setView} variant="rail" />
+          </div>
+          <div className="px-2">
+            <Points value={reports.userPoints} />
+          </div>
+        </aside>
 
-        <Nav view={view} setView={setView} currentTheme={currentTheme} />
-
-        {view === 'check' && (
-          <CheckView
-            routes={reports.routes}
-            capacity={reports.capacity}
-            down={reports.down}
-            checkStatus={reports.checkStatus}
-            nameForCode={reports.nameForCode}
-            currentTheme={currentTheme}
-          />
-        )}
-
-        {view === 'report' && (
-          <ReportView
-            routes={reports.routes}
-            down={reports.down}
-            submitCapacityReport={reports.submitCapacityReport}
-            submitBusDownReport={reports.submitBusDownReport}
-            nameForCode={reports.nameForCode}
-            currentTheme={currentTheme}
-          />
-        )}
-
-        {view === 'map' && (
-          <MapView
-            mapLoaded={map.mapLoaded}
-            routes={map.routes}
-            selectedBusRoute={map.selectedBusRoute}
-            setSelectedBusRoute={map.setSelectedBusRoute}
-            feedLive={map.feedLive}
-            vehicleSource={map.vehicleSource}
-          />
-        )}
-
-        {view === 'planner' && (
-          <PlannerView
-            fromLocation={plannerFrom}
-            toLocation={plannerTo}
-            setFromLocation={setPlannerFrom}
-            setToLocation={setPlannerTo}
-          />
-        )}
-
-        {view === 'ai' && (
-          <AiView
-            chatMessages={chat.chatMessages}
-            chatInput={chat.chatInput}
-            setChatInput={chat.setChatInput}
-            isAiThinking={chat.isAiThinking}
-            sendMessage={chat.sendMessage}
-            currentTheme={currentTheme}
-            pendingConfirm={chat.pendingConfirm}
-            confirmPending={chat.confirmPending}
-            cancelPending={chat.cancelPending}
-            trip={chat.currentTrip}
-          />
-        )}
-
-        <RewardOverlay showReward={reports.showReward} />
+        {/* content pane */}
+        <main className="min-w-0 flex-1 px-4 pb-24 pt-4 md:px-6 md:py-6 md:pb-6">
+          {view === 'map' && (
+            <MapView
+              mapLoaded={map.mapLoaded}
+              routes={map.routes}
+              selectedBusRoute={map.selectedBusRoute}
+              setSelectedBusRoute={map.setSelectedBusRoute}
+              feedLive={map.feedLive}
+              vehicleSource={map.vehicleSource}
+            />
+          )}
+          {view === 'planner' && (
+            <PlannerView
+              fromLocation={plannerFrom}
+              toLocation={plannerTo}
+              setFromLocation={setPlannerFrom}
+              setToLocation={setPlannerTo}
+            />
+          )}
+          {view === 'ai' && (
+            <AiView
+              chatMessages={chat.chatMessages}
+              chatInput={chat.chatInput}
+              setChatInput={chat.setChatInput}
+              isAiThinking={chat.isAiThinking}
+              sendMessage={chat.sendMessage}
+              pendingConfirm={chat.pendingConfirm}
+              confirmPending={chat.confirmPending}
+              cancelPending={chat.cancelPending}
+              trip={chat.currentTrip}
+            />
+          )}
+          {view === 'report' && (
+            <ReportView
+              routes={reports.routes}
+              down={reports.down}
+              submitCapacityReport={reports.submitCapacityReport}
+              submitBusDownReport={reports.submitBusDownReport}
+              nameForCode={reports.nameForCode}
+            />
+          )}
+          {view === 'check' && (
+            <CheckView
+              routes={reports.routes}
+              capacity={reports.capacity}
+              down={reports.down}
+              checkStatus={reports.checkStatus}
+              nameForCode={reports.nameForCode}
+            />
+          )}
+        </main>
       </div>
+
+      <Nav view={view} setView={setView} variant="tabs" />
+      <Toast notification={reports.notification} />
+      <RewardOverlay showReward={reports.showReward} />
     </div>
   );
 }

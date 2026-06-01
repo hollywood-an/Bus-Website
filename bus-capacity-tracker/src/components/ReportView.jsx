@@ -1,126 +1,121 @@
 import { useState } from 'react';
-import { Bus, Users } from 'lucide-react';
+import { Megaphone, AlertTriangle } from 'lucide-react';
 import { CAPACITY_LEVELS } from '../data/capacity';
+import CapacityMeter from './CapacityMeter';
+import RouteChip from './RouteChip';
 import { timeAgo } from '../lib/format';
 
-// Submits to the shared server store (Phase 1.6); route values are codes.
-export default function ReportView({ routes, down, submitCapacityReport, submitBusDownReport, nameForCode, currentTheme }) {
-  const [downBusRoute, setDownBusRoute] = useState('');
-  const [reportBusId, setReportBusId] = useState('');
-  const [reportCapacity, setReportCapacity] = useState(2);
+const CAP_VARS = ['var(--cap-0)', 'var(--cap-1)', 'var(--cap-2)', 'var(--cap-3)', 'var(--cap-4)'];
+const selectClass =
+  'w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm font-semibold text-ink focus:border-scarlet focus:outline-none';
 
-  const onReportDown = () => {
-    submitBusDownReport(downBusRoute);
-    setDownBusRoute('');
+export default function ReportView({ routes, down, submitCapacityReport, submitBusDownReport, nameForCode }) {
+  const [capRoute, setCapRoute] = useState('');
+  const [level, setLevel] = useState(2);
+  const [downRoute, setDownRoute] = useState('');
+
+  const onCap = () => {
+    if (!capRoute) return;
+    submitCapacityReport(capRoute, level);
+    setCapRoute('');
+    setLevel(2);
   };
-
-  const onReportCapacity = () => {
-    submitCapacityReport(reportBusId, reportCapacity);
-    setReportBusId('');
-    setReportCapacity(2);
+  const onDown = () => {
+    if (!downRoute) return;
+    submitBusDownReport(downRoute);
+    setDownRoute('');
   };
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-red-600">
-          <Bus size={24} />
-          Report Bus Down
+    <section className="mx-auto max-w-2xl space-y-5">
+      <div>
+        <h1 className="text-2xl">Report</h1>
+        <p className="mt-1 text-sm text-muted">Help everyone out — it takes two riders to confirm a status.</p>
+      </div>
+
+      {/* capacity */}
+      <div className="rounded-lg border border-line bg-surface p-4">
+        <h2 className="flex items-center gap-2 text-base font-bold">
+          <Megaphone size={18} className="text-scarlet-ink" /> How full is it?
         </h2>
-        <p className="text-sm text-gray-600 mb-4">
-          Let others know if a route isn&apos;t running. It takes two riders to confirm a route is down.
-        </p>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Bus Route</label>
-            <select
-              value={downBusRoute}
-              onChange={(e) => setDownBusRoute(e.target.value)}
-              className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-red-500 focus:outline-none"
-            >
-              <option value="">Select a bus route...</option>
-              {routes.map((route) => (
-                <option key={route.code} value={route.code}>{route.name}</option>
-              ))}
-            </select>
+        <div className="mt-3 space-y-3">
+          <select value={capRoute} onChange={(e) => setCapRoute(e.target.value)} className={selectClass} aria-label="Route to report capacity">
+            <option value="">Select a route…</option>
+            {routes.map((r) => (
+              <option key={r.code} value={r.code}>{r.name} ({r.code})</option>
+            ))}
+          </select>
+
+          <div className="grid grid-cols-5 gap-1.5">
+            {CAPACITY_LEVELS.map((lv, i) => {
+              const active = level === i;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setLevel(i)}
+                  aria-pressed={active}
+                  className={`rounded-lg border px-1 py-2 text-[11px] font-bold leading-tight transition-colors ${
+                    active ? 'border-transparent text-white' : 'border-line text-ink-soft hover:bg-surface-2'
+                  }`}
+                  style={active ? { backgroundColor: CAP_VARS[i] } : undefined}
+                >
+                  {lv.label}
+                </button>
+              );
+            })}
           </div>
+
+          <div className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2.5">
+            <span className="text-xs font-semibold text-muted">Preview</span>
+            <CapacityMeter level={level} showLabel={false} />
+          </div>
+
           <button
-            onClick={onReportDown}
-            disabled={!downBusRoute}
-            className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition-colors disabled:opacity-50"
+            onClick={onCap}
+            disabled={!capRoute}
+            className="w-full rounded-lg bg-scarlet px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
           >
-            Report Bus Down (+2 points)
+            Submit report <span className="font-mono">· +1</span>
+          </button>
+        </div>
+      </div>
+
+      {/* down */}
+      <div className="rounded-lg border border-line bg-surface p-4">
+        <h2 className="flex items-center gap-2 text-base font-bold text-danger">
+          <AlertTriangle size={18} /> Route not running?
+        </h2>
+        <div className="mt-3 space-y-3">
+          <select value={downRoute} onChange={(e) => setDownRoute(e.target.value)} className={selectClass} aria-label="Route to report down">
+            <option value="">Select a route…</option>
+            {routes.map((r) => (
+              <option key={r.code} value={r.code}>{r.name} ({r.code})</option>
+            ))}
+          </select>
+          <button
+            onClick={onDown}
+            disabled={!downRoute}
+            className="w-full rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-bold text-danger transition-colors hover:bg-surface-2 disabled:opacity-40"
+          >
+            Report as down <span className="font-mono">· +2</span>
           </button>
         </div>
 
         {down.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <h3 className="font-semibold text-sm text-red-600 mb-2">Currently reported down:</h3>
-            <div className="space-y-2">
-              {down.map((d) => (
-                <div
-                  key={d.route}
-                  className={`border-l-4 p-2 rounded text-sm ${d.confirmed ? 'bg-red-50 border-red-500' : 'bg-amber-50 border-amber-400'}`}
-                >
-                  <span className="font-semibold">{nameForCode(d.route)}</span>
-                  <span className="text-gray-600 ml-2">
-                    {d.confirmed ? 'confirmed' : 'unconfirmed'} · {d.reporterCount} reporter{d.reporterCount !== 1 ? 's' : ''} · {timeAgo(d.newestAt)}
-                  </span>
-                </div>
-              ))}
-            </div>
+          <div className="mt-4 space-y-2 border-t border-line pt-3">
+            {down.map((d) => (
+              <div key={d.route} className="flex flex-wrap items-center gap-2 text-sm">
+                <RouteChip code={d.route} color={routes.find((r) => r.code === d.route)?.color} />
+                <span className="font-semibold text-ink">{nameForCode(d.route)}</span>
+                <span className="font-mono text-[11px] text-muted">
+                  {d.confirmed ? 'confirmed' : 'unconfirmed'} · {d.reporterCount} · {timeAgo(d.newestAt)}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
-
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-          <Users size={24} />
-          Report Current Capacity
-        </h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Bus Route</label>
-            <select
-              value={reportBusId}
-              onChange={(e) => setReportBusId(e.target.value)}
-              className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-            >
-              <option value="">Select a bus route...</option>
-              {routes.map((route) => (
-                <option key={route.code} value={route.code}>{route.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">How full is the bus?</label>
-            <div className="space-y-2">
-              {CAPACITY_LEVELS.map((level, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setReportCapacity(idx)}
-                  className={`w-full p-4 rounded-lg border-2 transition-all ${
-                    reportCapacity === idx ? `${level.color} border-transparent text-white` : 'bg-white border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">{level.label}</span>
-                    <span className="text-2xl">{level.icon}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-          <button
-            onClick={onReportCapacity}
-            disabled={!reportBusId}
-            className={`w-full ${currentTheme.primary} ${currentTheme.textColor} py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50`}
-          >
-            Submit Report (+1 point)
-          </button>
-        </div>
-      </div>
-    </div>
+    </section>
   );
 }
