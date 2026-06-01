@@ -46,19 +46,18 @@ describe('dispatchTool (read tools)', () => {
     expect(Array.isArray(r.unconfirmedReports)).toBe(true);
   });
 
-  it('plan_route compares modes for a known pair (and resolves aliases)', async () => {
+  it('plan_route plans a trip for a geocodable pair (offline curated fallback)', async () => {
     const r: any = await dispatchTool('plan_route', { from: 'the union', to: 'rpac' });
     expect(r.from).toBe('Ohio Union');
     expect(r.to).toBe('RPAC');
     expect(r.walkMin).toBeGreaterThan(0);
     expect(r.scooterMin).toBeGreaterThan(0);
-    expect(r.hasDirectBus).toBe(true);
-    expect(r.busRoutes.length).toBeGreaterThan(0);
+    expect(['walk', 'bus', 'scooter']).toContain(r.fastest);
   });
 
-  it('plan_route rejects an unknown location', async () => {
-    const r: any = await dispatchTool('plan_route', { from: 'Narnia', to: 'RPAC' });
-    expect(r.error).toBe('unknown_location');
+  it('plan_route reports an unresolved location', async () => {
+    const r: any = await dispatchTool('plan_route', { from: 'Narnia', to: 'rpac' });
+    expect(r.error).toBe('unresolved_from');
   });
 
   it('get_next_arrival returns estimates or a clear note', async () => {
@@ -123,10 +122,14 @@ describe('UI-control tools (drive the app, emit ui_directive)', () => {
     expect((await dispatchTool('highlight_stops', { stop_ids: [] })) as any).toHaveProperty('error', 'no_stops');
   });
 
-  it('open_planner resolves locations and yields a ui_directive', async () => {
-    const r: any = await dispatchTool('open_planner', { from: 'the union', to: 'rpac' });
-    expect(r.ok).toBe(true);
-    expect(directiveFor('open_planner', r)).toEqual({ type: 'ui_directive', action: 'open_planner', args: { from: 'Ohio Union', to: 'RPAC' } });
-    expect((await dispatchTool('open_planner', { from: 'Narnia', to: 'RPAC' })) as any).toHaveProperty('error', 'unknown_location');
+  it('plan_route emits a show_trip ui_directive with map geometry', async () => {
+    const r: any = await dispatchTool('plan_route', { from: 'the union', to: 'rpac' });
+    const d = directiveFor('plan_route', r);
+    expect(d).toMatchObject({ type: 'ui_directive', action: 'show_trip' });
+    expect(d!.args).toHaveProperty('from');
+    expect(d!.args).toHaveProperty('to');
+    expect(d!.args).toHaveProperty('walk');
+    // an unresolved trip produces no directive
+    expect(directiveFor('plan_route', await dispatchTool('plan_route', { from: 'Narnia', to: 'rpac' }))).toBeNull();
   });
 });

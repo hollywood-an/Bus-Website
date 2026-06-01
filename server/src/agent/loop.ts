@@ -71,7 +71,9 @@ export async function runAgentLoop(opts: {
         const directive = directiveFor?.(tu.name!, result);
         if (directive) await onEvent(directive);
         log?.(`[tool] ${tu.name} ${JSON.stringify(tu.input ?? {})} -> ${truncate(JSON.stringify(result))}`);
-        return { type: 'tool_result' as const, tool_use_id: tu.id, content: JSON.stringify(result) };
+        // Strip `_`-prefixed keys (e.g. map geometry) from what the model sees — it's only for the
+        // client directive, and keeping it out of context saves tokens.
+        return { type: 'tool_result' as const, tool_use_id: tu.id, content: JSON.stringify(stripPrivate(result)) };
       }),
     );
     convo.push({ role: 'user', content: results });
@@ -84,6 +86,14 @@ export async function runAgentLoop(opts: {
 
 function truncate(s: string, n = 300): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+
+// Drop top-level keys starting with `_` (client-only payloads like map geometry) from a tool result.
+function stripPrivate(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) if (!k.startsWith('_')) out[k] = v;
+  return out;
 }
 
 // Real turn implementation: stream a Claude response, push text deltas through onText, and assemble
