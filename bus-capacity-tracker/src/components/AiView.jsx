@@ -36,7 +36,7 @@ export default function AiView({ chatMessages, chatInput, setChatInput, isAiThin
             </div>
           ))
         )}
-        {isAiThinking && (
+        {isAiThinking && chatMessages[chatMessages.length - 1]?.role !== 'assistant' && (
           <div className="flex justify-start">
             <div className="bg-gray-100 text-gray-800 p-3 rounded-lg">
               <div className="flex gap-1">
