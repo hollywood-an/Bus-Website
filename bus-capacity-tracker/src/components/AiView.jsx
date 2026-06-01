@@ -14,7 +14,6 @@ export default function AiView({
   pendingConfirm,
   confirmPending,
   cancelPending,
-  trip,
 }) {
   const waiting = isAiThinking && chatMessages[chatMessages.length - 1]?.role !== 'assistant';
 
@@ -24,15 +23,6 @@ export default function AiView({
         <h1 className="text-2xl">Assistant</h1>
         <p className="mt-1 text-sm text-muted">Ask for a route, crowding, or what to avoid. It plans trips and drives the map.</p>
       </div>
-
-      {trip && (
-        <div className="mb-3 rounded-lg border border-line bg-surface p-2.5">
-          <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-wide text-muted">
-            {trip.from?.name} → {trip.to?.name}
-          </div>
-          <TripMap geometry={trip} />
-        </div>
-      )}
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {chatMessages.length === 0 ? (
@@ -56,17 +46,29 @@ export default function AiView({
             </div>
           </div>
         ) : (
-          chatMessages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {m.role === 'user' ? (
-                <div className="max-w-[85%] rounded-2xl rounded-br-md bg-scarlet px-3.5 py-2 text-sm font-medium text-white">{m.content}</div>
-              ) : (
-                <div className="md max-w-[90%] rounded-2xl rounded-bl-md border border-line bg-surface px-3.5 py-2.5">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+          chatMessages.map((m, i) => {
+            if (m.role === 'trip') {
+              return (
+                <div key={i} className="rounded-lg border border-line bg-surface p-2.5">
+                  <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-wide text-muted">
+                    {m.trip.from?.name} → {m.trip.to?.name}
+                  </div>
+                  <TripMap geometry={m.trip} />
                 </div>
-              )}
-            </div>
-          ))
+              );
+            }
+            return (
+              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                {m.role === 'user' ? (
+                  <div className="max-w-[85%] rounded-2xl rounded-br-md bg-scarlet px-3.5 py-2 text-sm font-medium text-white">{m.content}</div>
+                ) : (
+                  <div className="md max-w-[90%] rounded-2xl rounded-bl-md border border-line bg-surface px-3.5 py-2.5">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
         {waiting && (
           <div className="flex justify-start">

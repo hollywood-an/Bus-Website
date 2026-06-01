@@ -114,7 +114,6 @@ export default function BusCapacityTracker() {
               pendingConfirm={chat.pendingConfirm}
               confirmPending={chat.confirmPending}
               cancelPending={chat.cancelPending}
-              trip={chat.currentTrip}
             />
           )}
           {view === 'report' && (
