@@ -9,12 +9,46 @@ import { streamAgent } from '../lib/agentClient';
 // state: crowding/down context is read server-side from the report store, so the request carries
 // only the conversation. `generateLocalFallback` remains the offline responder (uses static route
 // data + the live aggregates passed in) for when the proxy is unreachable.
-export function useChat({ getCapacityInfo, down, nameForCode }) {
+export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityReport, submitBusDownReport }) {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState(null); // { action, args } proposed write awaiting confirm
 
   const confirmedDownNames = () => (down ?? []).filter((d) => d.confirmed).map((d) => nameForCode(d.route));
+
+  // The agent proposes writes via a `confirm` directive; we surface a confirm card instead of writing.
+  const handleAgentEvent = (evt) => {
+    if (evt?.type === 'confirm') {
+      setPendingConfirm({ action: evt.action, args: evt.args || {} });
+    }
+  };
+
+  const confirmPending = async () => {
+    const p = pendingConfirm;
+    if (!p) return;
+    setPendingConfirm(null);
+    try {
+      if (p.action === 'submit_capacity_report') await submitCapacityReport(p.args.route, p.args.level);
+      else await submitBusDownReport(p.args.route);
+      const what = p.args.kind === 'capacity' ? `as "${p.args.label}"` : 'as down';
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: `Done — reported ${p.args.name} ${what}. Thanks for keeping it fresh for everyone.` },
+      ]);
+    } catch {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: "That didn't go through — try again from the Report tab." },
+      ]);
+    }
+  };
+
+  const cancelPending = () => {
+    if (!pendingConfirm) return;
+    setPendingConfirm(null);
+    setChatMessages((prev) => [...prev, { role: 'assistant', content: "No problem — I didn't submit anything." }]);
+  };
 
   const sendMessage = async () => {
     if (!chatInput.trim() || isAiThinking) return;
@@ -45,7 +79,7 @@ export function useChat({ getCapacityInfo, down, nameForCode }) {
     };
 
     try {
-      await streamAgent({ messages }, onDelta);
+      await streamAgent({ messages, onDelta, onEvent: handleAgentEvent });
       if (!started) {
         setChatMessages((prev) => [...prev, { role: 'assistant', content: generateLocalFallback(userMessage) }]);
       }
@@ -199,5 +233,5 @@ export function useChat({ getCapacityInfo, down, nameForCode }) {
     return `Current bus status:\n\n${overview}\n\nI can find the best route, flag crowded buses, or check which are running. What do you need?${warning}`;
   };
 
-  return { chatMessages, chatInput, setChatInput, isAiThinking, sendMessage };
+  return { chatMessages, chatInput, setChatInput, isAiThinking, sendMessage, pendingConfirm, confirmPending, cancelPending };
 }

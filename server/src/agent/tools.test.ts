@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { dispatchTool } from './tools';
+import { dispatchTool, directiveFor } from './tools';
 import { getReportStore } from '../store';
 
 // Tools read server-owned state: the feed cache (falls back to committed fixtures when the poller
@@ -70,5 +70,36 @@ describe('dispatchTool (read tools)', () => {
   it('unknown tool returns an error', async () => {
     const r: any = await dispatchTool('nope', {});
     expect(r.error).toMatch(/unknown_tool/);
+  });
+});
+
+describe('action tools (propose, never write)', () => {
+  it('submit_capacity_report proposes and validates the level', async () => {
+    const ok: any = await dispatchTool('submit_capacity_report', { route: 'cc', level: 3 });
+    expect(ok.proposed).toBe(true);
+    expect(ok.route).toBe('CC');
+    expect(ok.label).toBe('Crowded');
+    expect(ok.points).toBe(1);
+
+    expect((await dispatchTool('submit_capacity_report', { route: 'CC', level: 9 })) as any).toHaveProperty('error', 'bad_level');
+    expect((await dispatchTool('submit_capacity_report', { route: 'ZZZ', level: 2 })) as any).toHaveProperty('error', 'unknown_route');
+  });
+
+  it('report_bus_down proposes with +2 points', async () => {
+    const r: any = await dispatchTool('report_bus_down', { route: 'NWC' });
+    expect(r.proposed).toBe(true);
+    expect(r.kind).toBe('down');
+    expect(r.points).toBe(2);
+  });
+
+  it('directiveFor returns a confirm directive for a proposal, null otherwise', async () => {
+    const proposal = await dispatchTool('submit_capacity_report', { route: 'CC', level: 4 });
+    const d = directiveFor('submit_capacity_report', proposal);
+    expect(d).toMatchObject({ type: 'confirm', action: 'submit_capacity_report' });
+    expect(d!.args).toMatchObject({ kind: 'capacity', route: 'CC', level: 4, label: 'Very full', points: 1 });
+
+    expect(directiveFor('get_capacity', await dispatchTool('get_capacity', {}))).toBeNull();
+    // a rejected proposal must NOT produce a confirm directive
+    expect(directiveFor('submit_capacity_report', await dispatchTool('submit_capacity_report', { route: 'ZZZ', level: 2 }))).toBeNull();
   });
 });

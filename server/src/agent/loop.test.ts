@@ -116,4 +116,33 @@ describe('runAgentLoop', () => {
     expect(events.at(-1)).toEqual({ type: 'done', stop_reason: 'max_iterations' });
     expect(texts.join('')).toMatch(/narrowing/i);
   });
+
+  it('emits a directive over onEvent when directiveFor returns one', async () => {
+    let call = 0;
+    const runTurn: RunTurn = async () => {
+      call++;
+      if (call === 1) {
+        return {
+          content: [{ type: 'tool_use', id: 'p', name: 'submit_capacity_report', input: { route: 'CC', level: 4 } }],
+          stopReason: 'tool_use',
+        };
+      }
+      return { content: [{ type: 'text', text: 'Queued for your confirmation.' }], stopReason: 'end_turn' };
+    };
+    const dispatch = async () => ({ proposed: true, kind: 'capacity', route: 'CC', name: 'Campus Connector', level: 4 });
+    const directiveFor = (name: string) =>
+      name === 'submit_capacity_report' ? ({ type: 'confirm' as const, action: name, args: { route: 'CC' } }) : null;
+    const events: Array<{ type: string; action?: string }> = [];
+
+    await runAgentLoop({
+      messages: [{ role: 'user', content: 'report CC very full' }],
+      runTurn,
+      dispatch,
+      directiveFor,
+      onText: () => {},
+      onEvent: (e) => void events.push(e),
+    });
+
+    expect(events.some((e) => e.type === 'confirm' && e.action === 'submit_capacity_report')).toBe(true);
+  });
 });

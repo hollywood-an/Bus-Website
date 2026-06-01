@@ -21,10 +21,17 @@ export interface TurnResult {
 
 export type RunTurn = (messages: unknown[], onText: (t: string) => void | Promise<void>) => Promise<TurnResult>;
 export type Dispatch = (name: string, input: Record<string, unknown>) => Promise<unknown>;
+
+// A structured instruction streamed to the client (confirm a write; drive the UI). It's emitted via
+// onEvent AND the tool result still goes back to the model, so the agent knows the tool "did" something.
+export type Directive = { type: 'confirm' | 'ui_directive'; action: string; args: Record<string, unknown> };
+export type DirectiveFor = (name: string, result: unknown) => Directive | null;
+
 export type AgentEvent =
   | { type: 'tool'; name: string }
   | { type: 'done'; stop_reason: string | null }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | Directive;
 
 const DEFAULT_MAX_ITERS = 8;
 
@@ -34,10 +41,11 @@ export async function runAgentLoop(opts: {
   dispatch: Dispatch;
   onText: (t: string) => void | Promise<void>;
   onEvent: (e: AgentEvent) => void | Promise<void>;
+  directiveFor?: DirectiveFor;
   maxIters?: number;
   log?: (line: string) => void;
 }): Promise<void> {
-  const { messages, runTurn, dispatch, onText, onEvent, log } = opts;
+  const { messages, runTurn, dispatch, onText, onEvent, directiveFor, log } = opts;
   const maxIters = opts.maxIters ?? DEFAULT_MAX_ITERS;
   const convo: unknown[] = [...messages];
 
@@ -60,6 +68,8 @@ export async function runAgentLoop(opts: {
         } catch (err) {
           result = { error: String((err as Error)?.message ?? err) };
         }
+        const directive = directiveFor?.(tu.name!, result);
+        if (directive) await onEvent(directive);
         log?.(`[tool] ${tu.name} ${JSON.stringify(tu.input ?? {})} -> ${truncate(JSON.stringify(result))}`);
         return { type: 'tool_result' as const, tool_use_id: tu.id, content: JSON.stringify(result) };
       }),

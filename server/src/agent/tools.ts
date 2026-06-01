@@ -1,6 +1,7 @@
 import * as feed from '../feed';
 import { getReportStore } from '../store';
 import { ROUTE_TIMES, LOCATIONS, resolveLocation } from '../data/planning';
+import { validateReport } from '../validateReport';
 
 // Read tools for the agent. Each reads server-owned state (feed cache + report store) and returns a
 // plain JSON-serializable object. Tools validate their own input and return { error } rather than
@@ -187,6 +188,42 @@ function planRoute(input: { from?: unknown; to?: unknown }) {
   };
 }
 
+// --- action tools: PROPOSE only. They validate and return a proposal; the actual write happens
+// after the user confirms in the UI (see directiveFor + the client's POST /api/reports). The agent
+// never silently writes data. ---
+
+function proposeCapacity(input: { route?: unknown; level?: unknown }) {
+  const v = validateReport('capacity', input.route, input.level);
+  if (!v.ok) {
+    return v.error === 'bad_level'
+      ? { error: 'bad_level', validLevels: [0, 1, 2, 3, 4] }
+      : { error: 'unknown_route', knownRoutes: feed.getRoutes().map((r) => r.code) };
+  }
+  return {
+    proposed: true,
+    kind: 'capacity' as const,
+    route: v.code,
+    name: nameForCode(v.code),
+    level: v.level,
+    label: CAPACITY_LABELS[v.level!],
+    points: 1,
+    awaiting: 'user confirmation',
+  };
+}
+
+function proposeDown(input: { route?: unknown }) {
+  const v = validateReport('down', input.route, undefined);
+  if (!v.ok) return { error: 'unknown_route', knownRoutes: feed.getRoutes().map((r) => r.code) };
+  return {
+    proposed: true,
+    kind: 'down' as const,
+    route: v.code,
+    name: nameForCode(v.code),
+    points: 2,
+    awaiting: 'user confirmation',
+  };
+}
+
 export async function dispatchTool(name: string, input: Record<string, unknown>): Promise<unknown> {
   switch (name) {
     case 'get_live_buses':
@@ -205,9 +242,35 @@ export async function dispatchTool(name: string, input: Record<string, unknown>)
       return planRoute(input);
     case 'get_stops':
       return getStops(input);
+    case 'submit_capacity_report':
+      return proposeCapacity(input);
+    case 'report_bus_down':
+      return proposeDown(input);
     default:
       return { error: `unknown_tool:${name}` };
   }
+}
+
+// Build a client directive from a tool result, if the tool produces one. Action tools that validated
+// successfully produce a `confirm` directive (the UI asks the user before the write commits). The
+// loop streams this to the client AND the result still goes back to the model as the tool_result.
+export interface Directive {
+  type: 'confirm' | 'ui_directive';
+  action: string;
+  args: Record<string, unknown>;
+}
+
+export function directiveFor(name: string, result: unknown): Directive | null {
+  if (!result || typeof result !== 'object') return null;
+  const r = result as Record<string, unknown>;
+  if ((name === 'submit_capacity_report' || name === 'report_bus_down') && r.proposed) {
+    const args =
+      r.kind === 'capacity'
+        ? { kind: 'capacity', route: r.route, name: r.name, level: r.level, label: r.label, points: r.points }
+        : { kind: 'down', route: r.route, name: r.name, points: r.points };
+    return { type: 'confirm', action: name, args };
+  }
+  return null;
 }
 
 // Anthropic tool definitions (tight descriptions help the model pick the right one).
@@ -273,6 +336,29 @@ export const TOOL_DEFS = [
     input_schema: {
       type: 'object',
       properties: { route: { type: 'string', description: 'Route code, e.g. CC.' } },
+      required: ['route'],
+    },
+  },
+  {
+    name: 'submit_capacity_report',
+    description:
+      'Propose a crowdsourced capacity report for a route. Only call this when the user clearly wants to REPORT how full a bus is. The user is asked to confirm before it is saved — do not assume it is done.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        route: { type: 'string', description: 'Route code, e.g. CC.' },
+        level: { type: 'integer', description: 'Fullness 0=Empty,1=Few seats,2=Filling up,3=Crowded,4=Very full.' },
+      },
+      required: ['route', 'level'],
+    },
+  },
+  {
+    name: 'report_bus_down',
+    description:
+      'Propose a "bus is down / not running" report for a route. Only call this when the user clearly wants to REPORT a route as down. The user is asked to confirm before it is saved.',
+    input_schema: {
+      type: 'object',
+      properties: { route: { type: 'string', description: 'Route code, e.g. NWC.' } },
       required: ['route'],
     },
   },
