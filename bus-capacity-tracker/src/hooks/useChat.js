@@ -14,7 +14,6 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
   const [chatInput, setChatInput] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState(null); // { action, args } proposed write awaiting confirm
-  const [currentTrip, setCurrentTrip] = useState(null); // show_trip geometry for the inline map
 
   const confirmedDownNames = () => (down ?? []).filter((d) => d.confirmed).map((d) => nameForCode(d.route));
 
@@ -24,7 +23,8 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
       setPendingConfirm({ action: evt.action, args: evt.args || {} });
     } else if (evt?.type === 'ui_directive') {
       if (evt.action === 'show_trip') {
-        setCurrentTrip(evt.args); // render the trip map inline (no view switch)
+        // Drop the trip map into the conversation, under the question that triggered it.
+        setChatMessages((prev) => [...prev, { role: 'trip', trip: evt.args }]);
       } else {
         onUiDirective?.(evt); // focus the campus map / highlight stops (App switches that view)
       }
@@ -66,10 +66,9 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
     setChatInput('');
     setIsAiThinking(true);
 
-    const messages = history.map((m) => ({
-      role: m.role === 'assistant' ? 'assistant' : 'user',
-      content: m.content,
-    }));
+    const messages = history
+      .filter((m) => m.role === 'user' || m.role === 'assistant') // skip inline trip-map entries
+      .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
 
     let started = false;
     const onDelta = (_chunk, accumulated) => {
@@ -240,5 +239,5 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
     return `Current bus status:\n\n${overview}\n\nI can find the best route, flag crowded buses, or check which are running. What do you need?${warning}`;
   };
 
-  return { chatMessages, chatInput, setChatInput, isAiThinking, sendMessage, pendingConfirm, confirmPending, cancelPending, currentTrip };
+  return { chatMessages, chatInput, setChatInput, isAiThinking, sendMessage, pendingConfirm, confirmPending, cancelPending };
 }

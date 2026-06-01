@@ -36,9 +36,18 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
     ? {
         from: trip.from,
         to: trip.to,
-        walk: { encodedPolyline: trip.walkPolyline },
+        fastest: trip.fastest,
+        walk: { encodedPolyline: trip.walkPolyline, min: trip.walkMin },
+        scooter: { min: trip.scooterMin },
         bus: trip.bus
-          ? { routeColor: trip.bus.routeColor, routePolyline: trip.bus.routePolyline, board: trip.bus.board, alight: trip.bus.alight }
+          ? {
+              routeColor: trip.bus.routeColor,
+              routeName: trip.bus.routeName,
+              routePolyline: trip.bus.routePolyline,
+              board: trip.bus.board,
+              alight: trip.bus.alight,
+              min: trip.bus.totalMin,
+            }
           : null,
       }
     : null;
