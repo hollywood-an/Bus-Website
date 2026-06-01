@@ -60,8 +60,11 @@ export default function BusCapacityTracker() {
         {view === 'map' && (
           <MapView
             mapLoaded={map.mapLoaded}
+            routes={map.routes}
             selectedBusRoute={map.selectedBusRoute}
             setSelectedBusRoute={map.setSelectedBusRoute}
+            feedLive={map.feedLive}
+            vehicleSource={map.vehicleSource}
           />
         )}
 

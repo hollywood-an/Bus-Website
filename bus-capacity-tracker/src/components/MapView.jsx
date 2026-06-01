@@ -1,10 +1,26 @@
-import { BUS_STOPS } from '../data/busStops';
-import { ROUTE_COLORS, ROUTE_NAMES } from '../data/routes';
-
-export default function MapView({ mapLoaded, selectedBusRoute, setSelectedBusRoute }) {
+// Route list, colors, and names now come from the server feed (passed in via useGoogleMap),
+// not hardcoded constants. Shows a quiet degraded-state indicator and whether buses are live or
+// simulated.
+export default function MapView({ mapLoaded, routes, selectedBusRoute, setSelectedBusRoute, feedLive, vehicleSource }) {
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
-      <h2 className="text-xl font-bold mb-4">Interactive Campus Map</h2>
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <h2 className="text-xl font-bold">Interactive Campus Map</h2>
+        <div className="flex items-center gap-2 text-xs font-medium">
+          {feedLive ? (
+            <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 px-2 py-1 rounded">
+              <span className="w-2 h-2 rounded-full bg-green-500" /> Live feed
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-1 rounded">
+              <span className="w-2 h-2 rounded-full bg-amber-500" /> Live data unavailable — last known
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1 text-gray-600 bg-gray-100 px-2 py-1 rounded">
+            buses: {vehicleSource === 'live' ? 'live' : 'simulated'}
+          </span>
+        </div>
+      </div>
 
       <div className="mb-4">
         <label className="block text-sm font-medium mb-2">Filter by Route</label>
@@ -17,17 +33,18 @@ export default function MapView({ mapLoaded, selectedBusRoute, setSelectedBusRou
           >
             All Routes
           </button>
-          {Object.keys(BUS_STOPS).map(route => (
+          {routes.map((route) => (
             <button
-              key={route}
-              onClick={() => setSelectedBusRoute(route)}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all`}
+              key={route.code}
+              onClick={() => setSelectedBusRoute(route.code)}
+              className="px-4 py-2 rounded-lg font-semibold transition-all"
               style={{
-                backgroundColor: selectedBusRoute === route ? ROUTE_COLORS[route] : '#e5e7eb',
-                color: selectedBusRoute === route ? 'white' : '#374151'
+                backgroundColor: selectedBusRoute === route.code ? route.color : '#e5e7eb',
+                color: selectedBusRoute === route.code ? 'white' : '#374151',
               }}
+              title={route.name}
             >
-              {route}
+              {route.code}
             </button>
           ))}
         </div>
@@ -48,28 +65,24 @@ export default function MapView({ mapLoaded, selectedBusRoute, setSelectedBusRou
         )}
       </div>
 
-      <div className="mt-4 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-        <h3 className="font-bold mb-2">Map Features:</h3>
-        <ul className="text-sm text-gray-700 space-y-1">
-          <li>🔵 Click any bus stop marker for details</li>
-          <li>🎨 Color-coded markers by route</li>
-          <li>📍 Route lines show bus paths (when route is selected)</li>
-          <li>🗺️ Click "Open in Google Maps" to get directions</li>
-          <li>🔍 Use map controls to zoom and pan</li>
-        </ul>
-      </div>
+      <p className="mt-3 text-sm text-gray-500">
+        Real stops and route paths from OSU&apos;s live feed. Click a stop for details; arrows are buses
+        ({vehicleSource === 'live' ? 'live positions' : 'simulated while service is paused'}).
+      </p>
 
-      <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2">
-        {Object.entries(ROUTE_COLORS).filter(([key]) => key !== 'all').map(([route, color]) => (
-          <div key={route} className="flex items-center gap-2 text-sm">
-            <div
-              className="w-4 h-4 rounded-full border-2 border-white shadow"
-              style={{ backgroundColor: color }}
-            ></div>
-            <span className="font-semibold">{ROUTE_NAMES[route] || route}</span>
-          </div>
-        ))}
-      </div>
+      {routes.length > 0 && (
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2">
+          {routes.map((route) => (
+            <div key={route.code} className="flex items-center gap-2 text-sm">
+              <div
+                className="w-4 h-4 rounded-full border-2 border-white shadow"
+                style={{ backgroundColor: route.color }}
+              ></div>
+              <span className="font-semibold">{route.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
