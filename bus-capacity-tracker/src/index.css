@@ -1,3 +1,121 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Buckeye Transit design tokens (see DESIGN.md). Light, ink-on-paper, scarlet accent, OKLCH. ── */
+@layer base {
+  :root {
+    /* neutrals */
+    --paper: oklch(0.985 0.003 95);
+    --surface: oklch(1 0 0);
+    --surface-2: oklch(0.965 0.004 95);
+    --ink: oklch(0.18 0.012 260);
+    --ink-soft: oklch(0.34 0.012 260);
+    --muted: oklch(0.47 0.01 260);
+    --line: oklch(0.9 0.005 260);
+    --line-2: oklch(0.83 0.006 260);
+
+    /* brand */
+    --scarlet: oklch(0.5 0.205 27);
+    --scarlet-ink: oklch(0.43 0.2 27);
+    --scarlet-wash: oklch(0.96 0.03 27);
+
+    /* capacity ramp 0..4 (always paired with fill level + label) */
+    --cap-0: oklch(0.62 0.15 150);
+    --cap-1: oklch(0.7 0.15 130);
+    --cap-2: oklch(0.76 0.15 85);
+    --cap-3: oklch(0.66 0.17 55);
+    --cap-4: oklch(0.55 0.2 27);
+
+    /* semantic */
+    --ok: var(--cap-0);
+    --warn: oklch(0.72 0.16 75);
+    --danger: oklch(0.52 0.21 25);
+    --info: oklch(0.5 0.13 250);
+
+    --radius: 0.625rem;
+    --shadow-float: 0 10px 34px -12px oklch(0.18 0.04 260 / 0.28);
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    font-weight: 800;
+    line-height: 1.08;
+  }
+  ::selection {
+    background: var(--scarlet-wash);
+  }
+  :focus-visible {
+    outline: 2px solid var(--scarlet);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  /* tabular numbers everywhere mono is used so data columns line up */
+  .font-mono {
+    font-feature-settings: 'tnum' 1;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-2);
+    border-radius: 999px;
+    border: 2px solid var(--paper);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* assistant markdown */
+.md { font-size: 14px; line-height: 1.55; color: var(--ink); }
+.md > * + * { margin-top: 0.5rem; }
+.md strong { font-weight: 700; }
+.md a { color: var(--scarlet-ink); text-decoration: underline; }
+.md ul, .md ol { padding-left: 1.15rem; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md li + li { margin-top: 0.15rem; }
+.md code { font-family: 'JetBrains Mono Variable', ui-monospace, monospace; font-size: 0.85em; background: var(--surface-2); padding: 0.05rem 0.3rem; border-radius: 4px; }
+.md h1, .md h2, .md h3 { font-weight: 800; font-size: 1rem; }
+.md table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 13px; }
+.md th, .md td { border: 1px solid var(--line); padding: 0.3rem 0.55rem; text-align: left; white-space: nowrap; }
+.md th { background: var(--surface-2); font-weight: 700; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.animate-toast { animation: toast-in 200ms var(--ease) both; }
+
+@keyframes pop-in {
+  0% { opacity: 0; transform: scale(0.7); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1); }
+}
+.animate-pop { animation: pop-in 260ms var(--ease) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

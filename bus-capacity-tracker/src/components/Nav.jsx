@@ -1,32 +1,62 @@
-import { MessageCircle } from 'lucide-react';
+import { Map, Navigation, Bot, Megaphone, Gauge } from 'lucide-react';
 
-// The five-view tab bar. Class strings are identical to the original inline buttons.
-export default function Nav({ view, setView, currentTheme }) {
-  const tabClass = (active) =>
-    `flex-1 py-3 rounded-lg font-semibold transition-all ${
-      active
-        ? `${currentTheme.primary} ${currentTheme.textColor} shadow-lg`
-        : 'bg-white text-gray-700 hover:bg-gray-50'
-    }`;
+// One nav, two renderings: a labeled left rail on desktop, an icon tab bar on mobile.
+const NAV_ITEMS = [
+  { id: 'map', label: 'Map', icon: Map },
+  { id: 'planner', label: 'Plan', icon: Navigation },
+  { id: 'ai', label: 'Assistant', icon: Bot },
+  { id: 'report', label: 'Report', icon: Megaphone },
+  { id: 'check', label: 'Check', icon: Gauge },
+];
+
+export default function Nav({ view, setView, variant = 'rail' }) {
+  if (variant === 'tabs') {
+    return (
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-surface/95 backdrop-blur md:hidden"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        aria-label="Primary"
+      >
+        {NAV_ITEMS.map((item) => {
+          const active = view === item.id;
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setView(item.id)}
+              aria-current={active ? 'page' : undefined}
+              className={`flex min-h-[56px] flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors ${
+                active ? 'text-scarlet-ink' : 'text-muted'
+              }`}
+            >
+              <Icon size={22} strokeWidth={active ? 2.5 : 2} />
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
+    );
+  }
 
   return (
-    <div className="flex gap-2 mb-6">
-      <button onClick={() => setView('check')} className={tabClass(view === 'check')}>
-        Check Bus Status
-      </button>
-      <button onClick={() => setView('report')} className={tabClass(view === 'report')}>
-        Report
-      </button>
-      <button onClick={() => setView('map')} className={tabClass(view === 'map')}>
-        🗺️ Campus Map
-      </button>
-      <button onClick={() => setView('planner')} className={tabClass(view === 'planner')}>
-        Route Planner
-      </button>
-      <button onClick={() => setView('ai')} className={tabClass(view === 'ai')}>
-        <MessageCircle className="inline mr-2" size={20} />
-        Best Route AI
-      </button>
-    </div>
+    <nav className="flex flex-col gap-1" aria-label="Primary">
+      {NAV_ITEMS.map((item) => {
+        const active = view === item.id;
+        const Icon = item.icon;
+        return (
+          <button
+            key={item.id}
+            onClick={() => setView(item.id)}
+            aria-current={active ? 'page' : undefined}
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold transition-colors ${
+              active ? 'bg-scarlet-wash text-scarlet-ink' : 'text-ink-soft hover:bg-surface-2'
+            }`}
+          >
+            <Icon size={20} strokeWidth={active ? 2.5 : 2} />
+            {item.label}
+          </button>
+        );
+      })}
+    </nav>
   );
 }

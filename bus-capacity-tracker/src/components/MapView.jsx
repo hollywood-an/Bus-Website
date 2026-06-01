@@ -1,88 +1,66 @@
-// Route list, colors, and names now come from the server feed (passed in via useGoogleMap),
-// not hardcoded constants. Shows a quiet degraded-state indicator and whether buses are live or
-// simulated.
+// Map-forward: the map dominates the pane. Route data + colors come from the feed (via useGoogleMap).
 export default function MapView({ mapLoaded, routes, selectedBusRoute, setSelectedBusRoute, feedLive, vehicleSource }) {
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6">
-      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <h2 className="text-xl font-bold">Interactive Campus Map</h2>
-        <div className="flex items-center gap-2 text-xs font-medium">
-          {feedLive ? (
-            <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 px-2 py-1 rounded">
-              <span className="w-2 h-2 rounded-full bg-green-500" /> Live feed
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-1 rounded">
-              <span className="w-2 h-2 rounded-full bg-amber-500" /> Live data unavailable — last known
-            </span>
-          )}
-          <span className="inline-flex items-center gap-1 text-gray-600 bg-gray-100 px-2 py-1 rounded">
+    <section>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl">Campus map</h1>
+        <div className="flex items-center gap-2 text-xs font-semibold">
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1"
+            style={{ color: feedLive ? 'var(--ok)' : 'var(--warn)' }}
+          >
+            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: feedLive ? 'var(--ok)' : 'var(--warn)' }} />
+            {feedLive ? 'Live feed' : 'Last known'}
+          </span>
+          <span className="rounded-full bg-surface-2 px-2.5 py-1 text-muted">
             buses: {vehicleSource === 'live' ? 'live' : 'simulated'}
           </span>
         </div>
       </div>
 
-      <div className="mb-4">
-        <label className="block text-sm font-medium mb-2">Filter by Route</label>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setSelectedBusRoute('all')}
-            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-              selectedBusRoute === 'all' ? 'bg-gray-600 text-white' : 'bg-gray-200 text-gray-700'
-            }`}
-          >
-            All Routes
-          </button>
-          {routes.map((route) => (
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        <button
+          onClick={() => setSelectedBusRoute('all')}
+          className="rounded-full px-3 py-1.5 text-xs font-bold transition-colors"
+          style={
+            selectedBusRoute === 'all'
+              ? { backgroundColor: 'var(--ink)', color: '#fff' }
+              : { backgroundColor: 'var(--surface-2)', color: 'var(--ink-soft)' }
+          }
+        >
+          All
+        </button>
+        {routes.map((r) => {
+          const active = selectedBusRoute === r.code;
+          return (
             <button
-              key={route.code}
-              onClick={() => setSelectedBusRoute(route.code)}
-              className="px-4 py-2 rounded-lg font-semibold transition-all"
-              style={{
-                backgroundColor: selectedBusRoute === route.code ? route.color : '#e5e7eb',
-                color: selectedBusRoute === route.code ? 'white' : '#374151',
-              }}
-              title={route.name}
+              key={r.code}
+              onClick={() => setSelectedBusRoute(r.code)}
+              title={r.name}
+              className="rounded-full px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide transition-colors"
+              style={active ? { backgroundColor: r.color, color: '#fff' } : { backgroundColor: 'var(--surface-2)', color: 'var(--ink-soft)' }}
             >
-              {route.code}
+              {r.code}
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
       <div
         id="google-map"
-        className="rounded-lg overflow-hidden border-2 border-gray-300 relative"
-        style={{ height: '600px', width: '100%' }}
+        className="relative h-[58vh] overflow-hidden rounded-xl border border-line bg-surface-2 md:h-[calc(100vh-9.5rem)]"
       >
         {!mapLoaded && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-            <div className="text-center">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-              <p className="text-gray-600">Loading map...</p>
-            </div>
+          <div className="absolute inset-0 grid place-items-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-scarlet" />
           </div>
         )}
       </div>
 
-      <p className="mt-3 text-sm text-gray-500">
-        Real stops and route paths from OSU&apos;s live feed. Click a stop for details; arrows are buses
-        ({vehicleSource === 'live' ? 'live positions' : 'simulated while service is paused'}).
+      <p className="mt-2.5 text-xs text-muted">
+        Stops and route lines from OSU&apos;s live feed. Arrows are buses
+        {vehicleSource === 'live' ? ' (live positions)' : ' (simulated while service is paused)'}; tap a stop for details.
       </p>
-
-      {routes.length > 0 && (
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2">
-          {routes.map((route) => (
-            <div key={route.code} className="flex items-center gap-2 text-sm">
-              <div
-                className="w-4 h-4 rounded-full border-2 border-white shadow"
-                style={{ backgroundColor: route.color }}
-              ></div>
-              <span className="font-semibold">{route.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    </section>
   );
 }
