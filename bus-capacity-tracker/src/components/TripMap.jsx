@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Footprints, Bus, Zap } from 'lucide-react';
+import { Footprints, Bus, Zap, MapPinOff } from 'lucide-react';
 import { loadMaps } from '../lib/loadMaps';
 
 // Google-Maps-style trip map: shows ONE mode at a time (fastest by default), with a tab per mode
@@ -16,13 +16,15 @@ const MODE_META = {
 
 export default function TripMap({ geometry }) {
   const [mode, setMode] = useState(geometry?.fastest || 'walk');
+  const [mapError, setMapError] = useState(false); // Maps JS failed to load (bad/missing key, offline)
   const divRef = useRef(null);
   const mapRef = useRef(null);
   const overlaysRef = useRef([]);
 
-  // Reset to the fastest mode when a new trip comes in.
+  // Reset to the fastest mode (and clear any prior load error) when a new trip comes in.
   useEffect(() => {
     setMode(geometry?.fastest || 'walk');
+    setMapError(false);
   }, [geometry]);
 
   const modes = ['walk', 'bus', 'scooter'].filter((m) => m !== 'bus' || geometry?.bus);
@@ -104,7 +106,9 @@ export default function TripMap({ geometry }) {
         bounds.extend(b);
         map.fitBounds(bounds, 40);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setMapError(true);
+      });
 
     return () => {
       cancelled = true;
@@ -140,7 +144,17 @@ export default function TripMap({ geometry }) {
         })}
       </div>
 
-      <div ref={divRef} className="h-[480px] w-full overflow-hidden rounded-lg border border-line" />
+      {mapError ? (
+        <div className="grid h-[480px] max-h-[60vh] min-h-[260px] w-full place-items-center rounded-lg border border-line bg-surface-2 p-6 text-center">
+          <div>
+            <MapPinOff size={24} className="mx-auto text-muted" />
+            <p className="mt-2 text-sm font-bold text-ink">Map unavailable</p>
+            <p className="mt-1 text-xs text-muted">Couldn&apos;t load the map. The route details above still apply.</p>
+          </div>
+        </div>
+      ) : (
+        <div ref={divRef} className="h-[480px] max-h-[60vh] min-h-[260px] w-full overflow-hidden rounded-lg border border-line" />
+      )}
 
       <div className="mt-1.5 text-xs text-muted">
         {mode === 'bus' && geometry.bus

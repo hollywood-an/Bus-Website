@@ -13,6 +13,8 @@ const VEHICLE_POLL_MS = 15000;
 
 export function useGoogleMap(view) {
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapError, setMapError] = useState(false); // Maps JS failed to load (bad/missing key, offline)
+  const [routesError, setRoutesError] = useState(false); // /api/routes unreachable
   const [routes, setRoutes] = useState([]); // [{ code, name, color, darkColor }]
   const [selectedBusRoute, setSelectedBusRoute] = useState('all');
   const [feedLive, setFeedLive] = useState(true);
@@ -32,7 +34,7 @@ export function useGoogleMap(view) {
     if (view !== 'map' || mapLoaded) return;
     loadMaps()
       .then(() => setMapLoaded(true))
-      .catch(() => {});
+      .catch(() => setMapError(true));
   }, [view, mapLoaded]);
 
   // 2) Fetch the route list from the server when entering the map view.
@@ -45,9 +47,13 @@ export function useGoogleMap(view) {
         if (cancelled) return;
         setRoutes(Array.isArray(d.routes) ? d.routes : []);
         setFeedLive(Boolean(d.live));
+        setRoutesError(false);
       })
       .catch(() => {
-        if (!cancelled) setFeedLive(false);
+        if (!cancelled) {
+          setFeedLive(false);
+          setRoutesError(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -214,5 +220,5 @@ export function useGoogleMap(view) {
     }
   }, [view]);
 
-  return { mapLoaded, routes, selectedBusRoute, setSelectedBusRoute, feedLive, vehicleSource, setHighlightStops };
+  return { mapLoaded, mapError, routesError, routes, selectedBusRoute, setSelectedBusRoute, feedLive, vehicleSource, setHighlightStops };
 }
