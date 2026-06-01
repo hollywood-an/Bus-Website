@@ -1,179 +1,216 @@
-import { useState, useEffect } from 'react';
-import { BUS_STOPS } from '../data/busStops';
-import { ROUTE_COLORS } from '../data/routes';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
-// Loads the Google Maps JS API (once, when the map view is first opened) and (re)draws stop
-// markers + route polylines whenever the selected route changes. Logic is preserved verbatim
-// from the original App.jsx (Phase 0).
+// Drives the campus map from the server feed (Phase 1.5). Route list, stops, and polylines come
+// from /api/routes[/:code]; vehicles from /api/vehicles (live or mock, server's choice). The old
+// 25-waypoint Google Directions chunking hack is gone — we decode the feed's real encodedPolyline
+// with the Maps geometry library instead.
 //
-// KNOWN SCAFFOLDING (to be removed in Phase 1.5): polylines are drawn by chunking stops through
-// the Directions API in ≤25-waypoint segments. The live feed provides encoded polylines, which
-// will replace this hack entirely.
-export function useGoogleMap(view) {
-  const [selectedBusRoute, setSelectedBusRoute] = useState('all');
-  const [selectedStop, setSelectedStop] = useState(null);
-  const [mapLoaded, setMapLoaded] = useState(false);
+// The server always returns *something* (last-known-good cache → committed fixtures), so the map
+// degrades gracefully; `feedLive` surfaces when we're not on fresh data.
+const FALLBACK_CENTER = { lat: 40.0017, lng: -83.0197 };
+const VEHICLE_POLL_MS = 15000;
 
+export function useGoogleMap(view) {
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [routes, setRoutes] = useState([]); // [{ code, name, color, darkColor }]
+  const [selectedBusRoute, setSelectedBusRoute] = useState('all');
+  const [feedLive, setFeedLive] = useState(true);
+  const [vehicleSource, setVehicleSource] = useState('mock');
+
+  const mapRef = useRef(null);
+  const infoWindowRef = useRef(null);
+  const detailCacheRef = useRef(new Map()); // code -> { stops, patterns }
+  const routeOverlaysRef = useRef([]); // stop markers + polylines for the current selection
+  const vehicleMarkersRef = useRef([]);
+
+  const colorFor = useCallback((code) => routes.find((r) => r.code === code)?.color || '#64748b', [routes]);
+
+  // 1) Load the Maps script (geometry lib for decodePath) when the map view first opens.
   useEffect(() => {
-    if (view === 'map' && !mapLoaded) {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&libraries=directions,geometry`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => setMapLoaded(true);
-      document.head.appendChild(script);
+    if (view !== 'map' || mapLoaded) return;
+    if (window.google?.maps) {
+      setMapLoaded(true);
+      return;
     }
+    if (document.getElementById('gmaps-script')) return;
+    const script = document.createElement('script');
+    script.id = 'gmaps-script';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&libraries=geometry`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setMapLoaded(true);
+    document.head.appendChild(script);
   }, [view, mapLoaded]);
 
+  // 2) Fetch the route list from the server when entering the map view.
   useEffect(() => {
-    if (mapLoaded && view === 'map' && window.google) {
-      initMap();
+    if (view !== 'map') return;
+    let cancelled = false;
+    fetch('/api/routes')
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setRoutes(Array.isArray(d.routes) ? d.routes : []);
+        setFeedLive(Boolean(d.live));
+      })
+      .catch(() => {
+        if (!cancelled) setFeedLive(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view]);
+
+  // 3) Create the map (once) and (re)draw stops + polylines for the selected route(s).
+  useEffect(() => {
+    if (view !== 'map' || !mapLoaded || !window.google) return;
+    const el = document.getElementById('google-map');
+    if (!el) return;
+
+    if (!mapRef.current) {
+      mapRef.current = new window.google.maps.Map(el, {
+        center: FALLBACK_CENTER,
+        zoom: 14,
+        mapTypeControl: true,
+        streetViewControl: false,
+        fullscreenControl: true,
+      });
+      infoWindowRef.current = new window.google.maps.InfoWindow();
     }
-  }, [mapLoaded, view, selectedBusRoute]);
+    if (routes.length === 0) return; // map is up; routes still loading
 
-  const initMap = () => {
-    const mapElement = document.getElementById('google-map');
-    if (!mapElement || !window.google) return;
+    const map = mapRef.current;
+    let cancelled = false;
 
-    const map = new window.google.maps.Map(mapElement, {
-      center: { lat: 40.0006, lng: -83.0150 },
-      zoom: 14,
-      mapTypeControl: true,
-      streetViewControl: false,
-      fullscreenControl: true,
-    });
+    (async () => {
+      const detailFor = async (code) => {
+        if (detailCacheRef.current.has(code)) return detailCacheRef.current.get(code);
+        const d = await fetch(`/api/routes/${code}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+        if (d && !d.error) {
+          detailCacheRef.current.set(code, d);
+          return d;
+        }
+        return null;
+      };
 
-    const stops = selectedBusRoute === 'all'
-      ? Object.entries(BUS_STOPS).flatMap(([route, stops]) =>
-          stops.map(stop => ({ ...stop, route }))
-        )
-      : (BUS_STOPS[selectedBusRoute] || []).map(stop => ({ ...stop, route: selectedBusRoute }));
+      // Clear the previous selection's overlays.
+      routeOverlaysRef.current.forEach((o) => o.setMap(null));
+      routeOverlaysRef.current = [];
 
-    const markers = [];
-    const infoWindow = new window.google.maps.InfoWindow();
+      const codes = selectedBusRoute === 'all' ? routes.map((r) => r.code) : [selectedBusRoute];
+      const bounds = new window.google.maps.LatLngBounds();
+      const weight = selectedBusRoute === 'all' ? 3 : 5;
+      const opacity = selectedBusRoute === 'all' ? 0.7 : 0.9;
 
-    stops.forEach((stop) => {
-      const marker = new window.google.maps.Marker({
-        position: { lat: stop.lat, lng: stop.lng },
-        map: map,
-        title: stop.name,
-        icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: ROUTE_COLORS[stop.route] || ROUTE_COLORS['all'],
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 2,
-        },
-      });
+      for (const code of codes) {
+        const detail = await detailFor(code);
+        if (cancelled || !detail) continue;
+        const color = colorFor(code);
 
-      marker.addListener('click', () => {
-        const routes = Object.entries(BUS_STOPS)
-          .filter(([, stops]) => stops.find(s => s.id === stop.id))
-          .map(([route]) => route);
+        for (const pattern of detail.patterns) {
+          const path = window.google.maps.geometry.encoding.decodePath(pattern.encodedPolyline);
+          const line = new window.google.maps.Polyline({
+            path,
+            geodesic: false,
+            strokeColor: color,
+            strokeOpacity: opacity,
+            strokeWeight: weight,
+            map,
+          });
+          routeOverlaysRef.current.push(line);
+          path.forEach((pt) => bounds.extend(pt));
+        }
 
-        const content = `
-          <div style="padding: 10px;">
-            <h3 style="margin: 0 0 10px 0; font-weight: bold; font-size: 16px;">${stop.name}</h3>
-            <p style="margin: 5px 0; font-size: 14px;"><strong>Coordinates:</strong> ${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}</p>
-            <p style="margin: 5px 0; font-size: 14px;"><strong>Routes:</strong></p>
-            <div style="display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px;">
-              ${routes.map(route => `
-                <span style="
-                  background-color: ${ROUTE_COLORS[route]};
-                  color: white;
-                  padding: 4px 10px;
-                  border-radius: 12px;
-                  font-size: 12px;
-                  font-weight: bold;
-                ">${route}</span>
-              `).join('')}
-            </div>
-            <a href="https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lng}"
-               target="_blank"
-               style="display: inline-block; margin-top: 10px; color: #1a73e8; text-decoration: none; font-size: 14px;">
-              Open in Google Maps →
-            </a>
-          </div>
-        `;
-
-        infoWindow.setContent(content);
-        infoWindow.open(map, marker);
-        setSelectedStop(stop);
-      });
-
-      markers.push(marker);
-    });
-
-    // Draw polylines for all routes or selected route using Directions API for street routing
-    const directionsService = new window.google.maps.DirectionsService();
-    const drawRouteWithDirections = (routeStops, color, opacity, weight) => {
-      if (routeStops.length < 2) return;
-
-      // Split into segments of max 25 waypoints (API limit is 25 waypoints + origin + destination = 27)
-      const segmentSize = 23;
-
-      for (let i = 0; i < routeStops.length - 1; i += segmentSize) {
-        const segmentEnd = Math.min(i + segmentSize + 1, routeStops.length);
-        const segmentStops = routeStops.slice(i, segmentEnd);
-
-        if (segmentStops.length < 2) continue;
-
-        const origin = { lat: segmentStops[0].lat, lng: segmentStops[0].lng };
-        const destination = { lat: segmentStops[segmentStops.length - 1].lat, lng: segmentStops[segmentStops.length - 1].lng };
-        const waypoints = segmentStops.slice(1, -1).map(stop => ({
-          location: { lat: stop.lat, lng: stop.lng },
-          stopover: true
-        }));
-
-        directionsService.route({
-          origin: origin,
-          destination: destination,
-          waypoints: waypoints,
-          travelMode: 'DRIVING',
-          optimizeWaypoints: false,
-        }, (result, status) => {
-          if (status === 'OK') {
-            result.routes[0].legs.forEach((leg) => {
-              // The Polyline adds itself to the map via the `map` option; no handle needed.
-              new window.google.maps.Polyline({
-                path: leg.steps.reduce((path, step) => {
-                  return path.concat(window.google.maps.geometry.encoding.decodePath(step.polyline.points));
-                }, []),
-                geodesic: false,
-                strokeColor: color,
-                strokeOpacity: opacity,
-                strokeWeight: weight,
-                map: map,
-              });
-            });
-          } else {
-            // Fallback to straight line if directions API fails
-            new window.google.maps.Polyline({
-              path: segmentStops.map(stop => ({ lat: stop.lat, lng: stop.lng })),
-              geodesic: true,
-              strokeColor: color,
-              strokeOpacity: opacity,
-              strokeWeight: weight,
-              map: map,
-            });
-          }
-        });
+        for (const stop of detail.stops) {
+          const position = { lat: stop.latitude, lng: stop.longitude };
+          const marker = new window.google.maps.Marker({
+            position,
+            map,
+            title: stop.name,
+            icon: {
+              path: window.google.maps.SymbolPath.CIRCLE,
+              scale: 6,
+              fillColor: color,
+              fillOpacity: 1,
+              strokeColor: '#ffffff',
+              strokeWeight: 1.5,
+            },
+          });
+          marker.addListener('click', () => {
+            infoWindowRef.current.setContent(
+              `<div style="padding:6px 8px;font-family:system-ui,sans-serif"><strong>${stop.name}</strong><br><span style="font-size:12px;color:#666">${code}</span></div>`,
+            );
+            infoWindowRef.current.open(map, marker);
+          });
+          routeOverlaysRef.current.push(marker);
+          bounds.extend(position);
+        }
       }
+
+      if (!cancelled && !bounds.isEmpty()) map.fitBounds(bounds);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mapLoaded, routes, selectedBusRoute, view, colorFor]);
+
+  // 4) Poll vehicles and redraw their markers while on the map view.
+  useEffect(() => {
+    if (view !== 'map' || !mapLoaded || routes.length === 0) return;
+    let cancelled = false;
+
+    const drawVehicles = async () => {
+      if (!mapRef.current) return;
+      const url = selectedBusRoute === 'all' ? '/api/vehicles' : `/api/vehicles?route=${selectedBusRoute}`;
+      const d = await fetch(url)
+        .then((r) => r.json())
+        .catch(() => null);
+      if (cancelled || !d) return;
+      if (d.source) setVehicleSource(d.source);
+
+      vehicleMarkersRef.current.forEach((m) => m.setMap(null));
+      vehicleMarkersRef.current = [];
+
+      (d.vehicles || []).forEach((v) => {
+        const marker = new window.google.maps.Marker({
+          position: { lat: v.latitude, lng: v.longitude },
+          map: mapRef.current,
+          title: `${v.route}${v.destination ? ` → ${v.destination}` : ''}`,
+          zIndex: 1000,
+          icon: {
+            path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: 5,
+            rotation: v.heading || 0,
+            fillColor: colorFor(v.route),
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 1.5,
+          },
+        });
+        vehicleMarkersRef.current.push(marker);
+      });
     };
 
-    if (selectedBusRoute === 'all') {
-      // Draw polylines for each route following streets
-      Object.entries(BUS_STOPS).forEach(([route, routeStops]) => {
-        if (routeStops.length > 1) {
-          drawRouteWithDirections(routeStops, ROUTE_COLORS[route], 0.7, 3);
-        }
-      });
-    } else if (BUS_STOPS[selectedBusRoute] && BUS_STOPS[selectedBusRoute].length > 1) {
-      // Draw polyline for selected route with enhanced styling
-      drawRouteWithDirections(BUS_STOPS[selectedBusRoute], ROUTE_COLORS[selectedBusRoute], 0.85, 5);
-    }
-  };
+    drawVehicles();
+    const id = setInterval(drawVehicles, VEHICLE_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [mapLoaded, routes, selectedBusRoute, view, colorFor]);
 
-  return { mapLoaded, selectedBusRoute, setSelectedBusRoute, selectedStop };
+  // 5) Tear down the map instance when leaving the map view (its DOM node unmounts), so re-entry
+  //    rebuilds against a fresh #google-map element.
+  useEffect(() => {
+    if (view !== 'map') {
+      mapRef.current = null;
+      routeOverlaysRef.current = [];
+      vehicleMarkersRef.current = [];
+    }
+  }, [view]);
+
+  return { mapLoaded, routes, selectedBusRoute, setSelectedBusRoute, feedLive, vehicleSource };
 }

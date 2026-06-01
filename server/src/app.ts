@@ -4,6 +4,7 @@ import { streamSSE } from 'hono/streaming';
 import Anthropic from '@anthropic-ai/sdk';
 import { SYSTEM_PROMPT } from './prompt';
 import { rateLimit } from './rateLimit';
+import * as feed from './feed';
 import type { AgentRequest, ChatMessage } from './types';
 
 export const MODEL = process.env.AGENT_MODEL ?? 'claude-haiku-4-5';
@@ -20,8 +21,38 @@ app.use('/api/*', cors({ origin: ALLOWED_ORIGIN, allowMethods: ['GET', 'POST', '
 app.use('/api/agent', rateLimit({ windowMs: 60_000, max: 20 }));
 
 app.get('/api/health', (c) =>
-  c.json({ ok: true, model: MODEL, hasKey: Boolean(process.env.ANTHROPIC_API_KEY) }),
+  c.json({ ok: true, model: MODEL, hasKey: Boolean(process.env.ANTHROPIC_API_KEY), feed: feed.feedStatus() }),
 );
+
+// --- OSU feed (route data is server-owned; reads fall back to fixtures, never error) ---
+
+app.get('/api/routes', (c) => {
+  const status = feed.feedStatus();
+  return c.json({ routes: feed.getRoutes(), ...status });
+});
+
+app.get('/api/routes/:code', (c) => {
+  const code = c.req.param('code').toUpperCase();
+  const detail = feed.getRouteDetail(code);
+  if (!detail) return c.json({ error: 'unknown_route' }, 404);
+  const status = feed.feedStatus();
+  return c.json({ ...detail, ...status });
+});
+
+app.get('/api/vehicles', (c) => {
+  const status = feed.feedStatus();
+  const route = c.req.query('route');
+  const vehicles = route
+    ? feed.getVehicles(route)
+    : feed.getRoutes().flatMap((r) => feed.getVehicles(r.code));
+  return c.json({
+    route: route ? route.toUpperCase() : null,
+    vehicles,
+    source: feed.vehicleSource(),
+    live: status.live,
+    lastUpdated: status.lastUpdated,
+  });
+});
 
 app.post('/api/agent', async (c) => {
   let body: AgentRequest;
