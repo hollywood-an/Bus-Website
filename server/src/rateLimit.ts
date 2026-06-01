@@ -10,17 +10,25 @@ interface Bucket {
   resetAt: number;
 }
 
-export function rateLimit({ windowMs, max }: { windowMs: number; max: number }): MiddlewareHandler {
+export function rateLimit({
+  windowMs,
+  max,
+  key,
+}: {
+  windowMs: number;
+  max: number;
+  key?: (c: Context) => string;
+}): MiddlewareHandler {
   const buckets = new Map<string, Bucket>();
 
   return async (c, next) => {
-    const ip = clientIp(c);
+    const id = (key ? key(c) : clientIp(c)) || 'unknown';
     const now = Date.now();
 
-    let bucket = buckets.get(ip);
+    let bucket = buckets.get(id);
     if (!bucket || now > bucket.resetAt) {
       bucket = { count: 0, resetAt: now + windowMs };
-      buckets.set(ip, bucket);
+      buckets.set(id, bucket);
     }
     bucket.count++;
 

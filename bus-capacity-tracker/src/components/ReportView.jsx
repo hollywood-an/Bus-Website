@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Bus, Users } from 'lucide-react';
-import { OSU_BUS_ROUTES } from '../data/routes';
 import { CAPACITY_LEVELS } from '../data/capacity';
+import { timeAgo } from '../lib/format';
 
-export default function ReportView({ busDownReports, submitCapacityReport, submitBusDownReport, currentTheme }) {
+// Submits to the shared server store (Phase 1.6); route values are codes.
+export default function ReportView({ routes, down, submitCapacityReport, submitBusDownReport, nameForCode, currentTheme }) {
   const [downBusRoute, setDownBusRoute] = useState('');
   const [reportBusId, setReportBusId] = useState('');
   const [reportCapacity, setReportCapacity] = useState(2);
@@ -26,7 +27,9 @@ export default function ReportView({ busDownReports, submitCapacityReport, submi
           <Bus size={24} />
           Report Bus Down
         </h2>
-        <p className="text-sm text-gray-600 mb-4">Let others know if a bus route is not running</p>
+        <p className="text-sm text-gray-600 mb-4">
+          Let others know if a route isn&apos;t running. It takes two riders to confirm a route is down.
+        </p>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-2">Bus Route</label>
@@ -36,33 +39,35 @@ export default function ReportView({ busDownReports, submitCapacityReport, submi
               className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-red-500 focus:outline-none"
             >
               <option value="">Select a bus route...</option>
-              {OSU_BUS_ROUTES.map((route) => (
-                <option key={route} value={route}>{route}</option>
+              {routes.map((route) => (
+                <option key={route.code} value={route.code}>{route.name}</option>
               ))}
             </select>
           </div>
           <button
             onClick={onReportDown}
-            className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition-colors"
+            disabled={!downBusRoute}
+            className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition-colors disabled:opacity-50"
           >
-            Report Bus Down 🚨 (Earn 2 Points!)
+            Report Bus Down (+2 points)
           </button>
         </div>
 
-        {Object.keys(busDownReports).length > 0 && (
+        {down.length > 0 && (
           <div className="mt-4 pt-4 border-t border-gray-200">
-            <h3 className="font-semibold text-sm text-red-600 mb-2">⚠️ Currently Down:</h3>
+            <h3 className="font-semibold text-sm text-red-600 mb-2">Currently reported down:</h3>
             <div className="space-y-2">
-              {Object.keys(busDownReports).map(route => {
-                const validReports = busDownReports[route].filter(r => r.expiresAt > Date.now());
-                if (validReports.length === 0) return null;
-                return (
-                  <div key={route} className="bg-red-50 border-l-4 border-red-500 p-2 rounded text-sm">
-                    <span className="font-semibold">{route}</span>
-                    <span className="text-gray-600 ml-2">({validReports.length} report{validReports.length !== 1 ? 's' : ''})</span>
-                  </div>
-                );
-              })}
+              {down.map((d) => (
+                <div
+                  key={d.route}
+                  className={`border-l-4 p-2 rounded text-sm ${d.confirmed ? 'bg-red-50 border-red-500' : 'bg-amber-50 border-amber-400'}`}
+                >
+                  <span className="font-semibold">{nameForCode(d.route)}</span>
+                  <span className="text-gray-600 ml-2">
+                    {d.confirmed ? 'confirmed' : 'unconfirmed'} · {d.reporterCount} reporter{d.reporterCount !== 1 ? 's' : ''} · {timeAgo(d.newestAt)}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -82,8 +87,8 @@ export default function ReportView({ busDownReports, submitCapacityReport, submi
               className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
             >
               <option value="">Select a bus route...</option>
-              {OSU_BUS_ROUTES.map((route) => (
-                <option key={route} value={route}>{route}</option>
+              {routes.map((route) => (
+                <option key={route.code} value={route.code}>{route.name}</option>
               ))}
             </select>
           </div>
@@ -96,9 +101,7 @@ export default function ReportView({ busDownReports, submitCapacityReport, submi
                   type="button"
                   onClick={() => setReportCapacity(idx)}
                   className={`w-full p-4 rounded-lg border-2 transition-all ${
-                    reportCapacity === idx
-                      ? `${level.color} border-transparent text-white`
-                      : 'bg-white border-gray-200 hover:border-gray-300'
+                    reportCapacity === idx ? `${level.color} border-transparent text-white` : 'bg-white border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -111,9 +114,10 @@ export default function ReportView({ busDownReports, submitCapacityReport, submi
           </div>
           <button
             onClick={onReportCapacity}
-            className={`w-full ${currentTheme.primary} ${currentTheme.textColor} py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity`}
+            disabled={!reportBusId}
+            className={`w-full ${currentTheme.primary} ${currentTheme.textColor} py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50`}
           >
-            Submit Report & Earn Point! 🎉
+            Submit Report (+1 point)
           </button>
         </div>
       </div>
