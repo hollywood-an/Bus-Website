@@ -41,12 +41,12 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
       const what = p.args.kind === 'capacity' ? `as "${p.args.label}"` : 'as down';
       setChatMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: `Done — reported ${p.args.name} ${what}. Thanks for keeping it fresh for everyone.` },
+        { role: 'assistant', content: `Done. Reported ${p.args.name} ${what}. Thanks for keeping it fresh for everyone.` },
       ]);
     } catch {
       setChatMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: "That didn't go through — try again from the Report tab." },
+        { role: 'assistant', content: "That didn't go through. Try again from the Report tab." },
       ]);
     }
   };
@@ -54,7 +54,7 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
   const cancelPending = () => {
     if (!pendingConfirm) return;
     setPendingConfirm(null);
-    setChatMessages((prev) => [...prev, { role: 'assistant', content: "No problem — I didn't submit anything." }]);
+    setChatMessages((prev) => [...prev, { role: 'assistant', content: "No problem, I didn't submit anything." }]);
   };
 
   const sendMessage = async () => {
@@ -96,7 +96,7 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
         ...prev,
         {
           role: 'assistant',
-          content: `${generateLocalFallback(userMessage)}\n\n_(Live assistant unavailable right now — this is an offline answer.)_`,
+          content: `${generateLocalFallback(userMessage)}\n\n_(Live assistant unavailable right now; this is an offline answer.)_`,
         },
       ]);
     } finally {
@@ -155,14 +155,14 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
           const firstRoute = route.routes[0];
           const routeInfo = getCapacityInfo(firstRoute);
           if (routeInfo && routeInfo.level.value >= 3) {
-            response += `But the ${firstRoute} is crowded right now (${routeInfo.level.label}) — consider a scooter or the next bus.`;
+            response += `But the ${firstRoute} is crowded right now (${routeInfo.level.label}); consider a scooter or the next bus.`;
           } else if (routeInfo) {
             response += `The ${firstRoute} is ${routeInfo.level.label.toLowerCase()}, so it's a solid choice.`;
           } else {
             response += `Take the bus.`;
           }
         } else if (busTime) {
-          response += `The time difference is small — walking or a scooter is about as fast.`;
+          response += `The time difference is small, so walking or a scooter is about as fast.`;
         } else {
           response += `No direct bus route. ${walkTime > 12 ? 'Grab a Veo/Spin scooter' : 'Just walk'} for this trip.`;
         }
@@ -177,14 +177,14 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
     if (lowerMessage.includes('down') || lowerMessage.includes('not running') || lowerMessage.includes('broken')) {
       return downBuses.length > 0
         ? `Currently reported down: ${downBuses.join(', ')}. Try an alternative route or check back later.`
-        : `No buses are confirmed down right now — routes should be running normally.`;
+        : `No buses are confirmed down right now; routes should be running normally.`;
     }
 
     if (lowerMessage.includes('least crowded') || lowerMessage.includes('empty') || lowerMessage.includes('comfortable')) {
       const withInfo = OSU_BUS_ROUTES.map((r) => ({ name: r, info: getCapacityInfo(r) })).filter((x) => x.info);
       if (withInfo.length > 0) {
         const least = withInfo.reduce((min, x) => (x.info.level.value < min.info.level.value ? x : min));
-        return `The ${least.name} is the least crowded right now — ${least.info.level.label}. Good bet for a comfortable ride.`;
+        return `The ${least.name} is the least crowded right now: ${least.info.level.label}. Good bet for a comfortable ride.`;
       }
       return `No recent capacity reports. Report a bus to help others out.`;
     }
@@ -193,7 +193,7 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
       const withInfo = OSU_BUS_ROUTES.map((r) => ({ name: r, info: getCapacityInfo(r) })).filter((x) => x.info);
       if (withInfo.length > 0) {
         const most = withInfo.reduce((max, x) => (x.info.level.value > max.info.level.value ? x : max));
-        return `Avoid the ${most.name} for now — it's ${most.info.level.label}. Wait for the next one or try another route.`;
+        return `Avoid the ${most.name} for now: it's ${most.info.level.label}. Wait for the next one or try another route.`;
       }
       return `No recent capacity reports. Report a bus to help others out.`;
     }
@@ -224,8 +224,8 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
             : info.level.value === 2
               ? 'Getting busy but manageable.'
               : info.level.value === 3
-                ? 'Pretty crowded — you might wait for the next one.'
-                : 'Very full — consider waiting or another route.'
+                ? 'Pretty crowded; you might wait for the next one.'
+                : 'Very full; consider waiting or another route.'
         }`;
       }
       return `No recent capacity reports for the ${mentioned}. Report it to help others.`;

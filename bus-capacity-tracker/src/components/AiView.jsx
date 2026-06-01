@@ -82,7 +82,7 @@ export default function AiView({
         <div className="mt-3 rounded-lg border border-line bg-surface-2 p-3">
           <p className="text-sm text-ink">
             Submit this report? <strong>{pendingConfirm.args.name}</strong>{' '}
-            {pendingConfirm.args.kind === 'capacity' ? `— ${pendingConfirm.args.label}` : '— reported down'}{' '}
+            {pendingConfirm.args.kind === 'capacity' ? `· ${pendingConfirm.args.label}` : '· reported down'}{' '}
             <span className="font-mono text-xs text-muted">+{pendingConfirm.args.points}</span>
           </p>
           <div className="mt-2 flex gap-2">
@@ -110,7 +110,7 @@ export default function AiView({
           onClick={sendMessage}
           disabled={!chatInput.trim() || isAiThinking}
           aria-label="Send"
-          className="grid w-11 shrink-0 place-items-center rounded-lg bg-scarlet text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="grid w-11 shrink-0 place-items-center rounded-lg bg-scarlet text-white transition-colors hover:bg-scarlet-ink disabled:bg-surface-2 disabled:text-muted"
         >
           <Send size={18} />
         </button>

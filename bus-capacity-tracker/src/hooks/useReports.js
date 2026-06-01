@@ -160,7 +160,7 @@ export function useReports() {
       const d = await postReport({ kind: 'capacity', route: code, level });
       setCapacity(d.capacity ?? []);
       setDown(d.down ?? []);
-      await award(d.pointsDelta ?? 1, `Reported ${nameForCode(code)} — +${d.pointsDelta ?? 1} point`);
+      await award(d.pointsDelta ?? 1, `Reported ${nameForCode(code)} · +${d.pointsDelta ?? 1} point`);
     } catch {
       flash("Couldn't submit (offline?). Try again.");
     }
@@ -172,7 +172,7 @@ export function useReports() {
       const d = await postReport({ kind: 'down', route: code });
       setCapacity(d.capacity ?? []);
       setDown(d.down ?? []);
-      await award(d.pointsDelta ?? 2, `Reported ${nameForCode(code)} down — +${d.pointsDelta ?? 2} points`);
+      await award(d.pointsDelta ?? 2, `Reported ${nameForCode(code)} down · +${d.pointsDelta ?? 2} points`);
     } catch {
       flash("Couldn't submit (offline?). Try again.");
     }
@@ -186,7 +186,7 @@ export function useReports() {
     } else {
       const tag = info.confident ? '' : ' (unconfirmed)';
       setNotification(
-        `${nameForCode(code)}: ${info.level.label} ${info.level.icon} — ${info.reporterCount} reporter${info.reporterCount !== 1 ? 's' : ''}${tag}`,
+        `${nameForCode(code)}: ${info.level.label} · ${info.reporterCount} reporter${info.reporterCount !== 1 ? 's' : ''}${tag}`,
       );
     }
     setTimeout(() => setNotification(''), 5000);

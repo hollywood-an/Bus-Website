@@ -30,7 +30,7 @@ export default function ReportView({ routes, down, submitCapacityReport, submitB
     <section className="mx-auto max-w-2xl space-y-5">
       <div>
         <h1 className="text-2xl">Report</h1>
-        <p className="mt-1 text-sm text-muted">Help everyone out — it takes two riders to confirm a status.</p>
+        <p className="mt-1 text-sm text-muted">Help everyone out. It takes two riders to confirm a status.</p>
       </div>
 
       {/* capacity */}
@@ -74,7 +74,7 @@ export default function ReportView({ routes, down, submitCapacityReport, submitB
           <button
             onClick={onCap}
             disabled={!capRoute}
-            className="w-full rounded-lg bg-scarlet px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="w-full rounded-lg bg-scarlet px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-scarlet-ink disabled:bg-surface-2 disabled:text-muted"
           >
             Submit report <span className="font-mono">· +1</span>
           </button>

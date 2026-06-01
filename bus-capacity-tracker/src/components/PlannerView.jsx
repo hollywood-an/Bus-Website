@@ -62,15 +62,15 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
   return (
     <section className="mx-auto max-w-2xl">
       <h1 className="text-2xl">Plan a trip</h1>
-      <p className="mt-1 text-sm text-muted">Any OSU building or nearby address — walk vs. bus vs. scooter.</p>
+      <p className="mt-1 text-sm text-muted">Any OSU building or nearby address: walk vs. bus vs. scooter.</p>
 
       <div className="mt-4 space-y-2.5">
-        <input value={fromLocation} onChange={(e) => setFromLocation(e.target.value)} onKeyDown={onKey} placeholder="From — e.g. Morrill Tower" className={inputClass} aria-label="From" />
-        <input value={toLocation} onChange={(e) => setToLocation(e.target.value)} onKeyDown={onKey} placeholder="To — e.g. Thompson Library" className={inputClass} aria-label="To" />
+        <input value={fromLocation} onChange={(e) => setFromLocation(e.target.value)} onKeyDown={onKey} placeholder="From (e.g. Morrill Tower)" className={inputClass} aria-label="From" />
+        <input value={toLocation} onChange={(e) => setToLocation(e.target.value)} onKeyDown={onKey} placeholder="To (e.g. Thompson Library)" className={inputClass} aria-label="To" />
         <button
           onClick={plan}
           disabled={loading || !fromLocation.trim() || !toLocation.trim()}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-scarlet px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-scarlet px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-scarlet-ink disabled:bg-surface-2 disabled:text-muted"
         >
           <Navigation size={16} />
           {loading ? 'Planning…' : 'Plan trip'}
