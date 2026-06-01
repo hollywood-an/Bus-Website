@@ -35,11 +35,8 @@ export default function BusCapacityTracker() {
       if (d.args?.route) map.setSelectedBusRoute(d.args.route);
       map.setHighlightStops(Array.isArray(d.args?.stopIds) ? d.args.stopIds : []);
       setView('map');
-    } else if (d.action === 'open_planner') {
-      if (d.args?.from) setPlannerFrom(d.args.from);
-      if (d.args?.to) setPlannerTo(d.args.to);
-      setView('planner');
     }
+    // show_trip is handled inside useChat (renders the inline map) — no view switch.
   };
 
   const chat = useChat({
@@ -115,6 +112,7 @@ export default function BusCapacityTracker() {
             pendingConfirm={chat.pendingConfirm}
             confirmPending={chat.confirmPending}
             cancelPending={chat.cancelPending}
+            trip={chat.currentTrip}
           />
         )}
 

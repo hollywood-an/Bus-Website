@@ -9,6 +9,7 @@ import { getReportStore } from './store';
 import { runAgentLoop, makeRunTurn } from './agent/loop';
 import { TOOL_DEFS, dispatchTool, directiveFor } from './agent/tools';
 import { validateReport } from './validateReport';
+import { planTrip } from './planning/planTrip';
 import type { AgentRequest, ChatMessage } from './types';
 
 export const MODEL = process.env.AGENT_MODEL ?? 'claude-haiku-4-5';
@@ -66,6 +67,12 @@ const reportLimiter = rateLimit({
   max: 15,
   key: (c) => c.req.header('x-client-id') || clientIp(c),
 });
+// Trip planning hits Google (geocoding/directions) — rate-limit per client.
+const planLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  key: (c) => c.req.header('x-client-id') || clientIp(c),
+});
 
 app.get('/api/reports', (c) => {
   const store = getReportStore();
@@ -89,6 +96,16 @@ app.post('/api/reports', reportLimiter, async (c) => {
   const store = getReportStore();
   const result = v.kind === 'capacity' ? store.addCapacity(v.code, v.level!, reporterId) : store.addDown(v.code, reporterId);
   return c.json({ ...result, capacity: store.capacity(), down: store.down() });
+});
+
+// Multi-modal trip planning (geocoded). Used by the Route Planner tab; the AI assistant reaches the
+// same core via the plan_route tool.
+app.get('/api/plan', planLimiter, async (c) => {
+  const from = c.req.query('from') ?? '';
+  const to = c.req.query('to') ?? '';
+  if (!from.trim() || !to.trim()) return c.json({ error: 'missing_params' }, 400);
+  const result = await planTrip(from, to);
+  return c.json(result); // includes an `error` field if a location couldn't be resolved
 });
 
 app.post('/api/agent', async (c) => {

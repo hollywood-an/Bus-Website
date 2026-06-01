@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { loadMaps } from '../lib/loadMaps';
 
 // Drives the campus map from the server feed (Phase 1.5). Route list, stops, and polylines come
 // from /api/routes[/:code]; vehicles from /api/vehicles (live or mock, server's choice). The old
@@ -26,21 +27,12 @@ export function useGoogleMap(view) {
 
   const colorFor = useCallback((code) => routes.find((r) => r.code === code)?.color || '#64748b', [routes]);
 
-  // 1) Load the Maps script (geometry lib for decodePath) when the map view first opens.
+  // 1) Load the Maps API (shared loader; geometry lib for decodePath) when the map view first opens.
   useEffect(() => {
     if (view !== 'map' || mapLoaded) return;
-    if (window.google?.maps) {
-      setMapLoaded(true);
-      return;
-    }
-    if (document.getElementById('gmaps-script')) return;
-    const script = document.createElement('script');
-    script.id = 'gmaps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&libraries=geometry`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => setMapLoaded(true);
-    document.head.appendChild(script);
+    loadMaps()
+      .then(() => setMapLoaded(true))
+      .catch(() => {});
   }, [view, mapLoaded]);
 
   // 2) Fetch the route list from the server when entering the map view.

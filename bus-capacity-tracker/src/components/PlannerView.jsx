@@ -1,177 +1,130 @@
+import { useState } from 'react';
 import { TrendingUp } from 'lucide-react';
-import { OSU_LOCATIONS } from '../data/locations';
-import { ROUTE_TIMES } from '../data/routeTimes';
+import TripMap from './TripMap';
 
-// from/to are controlled by App so the agent's open_planner directive can pre-fill them.
+// Phase 4.7: free-text, geocoded planning. from/to are controlled by App; the trip comes from the
+// server's GET /api/plan (the same planTrip core the agent's plan_route tool uses).
 export default function PlannerView({ fromLocation, toLocation, setFromLocation, setToLocation }) {
+  const [trip, setTrip] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const plan = async () => {
+    if (!fromLocation.trim() || !toLocation.trim()) return;
+    setLoading(true);
+    setError('');
+    setTrip(null);
+    try {
+      const res = await fetch(`/api/plan?from=${encodeURIComponent(fromLocation)}&to=${encodeURIComponent(toLocation)}`);
+      const data = await res.json();
+      if (data.error === 'unresolved_from') setError(`Couldn't find "${fromLocation}" near campus.`);
+      else if (data.error === 'unresolved_to') setError(`Couldn't find "${toLocation}" near campus.`);
+      else if (data.error) setError('Could not plan that trip.');
+      else setTrip(data);
+    } catch {
+      setError('Planner is unavailable right now.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onKey = (e) => {
+    if (e.key === 'Enter') plan();
+  };
+
+  const geometry = trip
+    ? {
+        from: trip.from,
+        to: trip.to,
+        walk: { encodedPolyline: trip.walkPolyline },
+        bus: trip.bus
+          ? { routeColor: trip.bus.routeColor, routePolyline: trip.bus.routePolyline, board: trip.bus.board, alight: trip.bus.alight }
+          : null,
+      }
+    : null;
+
+  const card = (active) =>
+    `p-4 rounded-lg border-2 text-center ${active ? 'border-green-500 bg-green-50' : 'border-gray-200'}`;
+
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
       <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
         <TrendingUp size={24} />
         Route Planner
       </h2>
-      <p className="text-gray-600 mb-6">Compare walking vs. bus times between campus locations</p>
+      <p className="text-gray-600 mb-4">Type any OSU building or nearby address — walk vs. bus vs. scooter.</p>
 
-      <div className="space-y-4 mb-6">
-        <div>
-          <label className="block text-sm font-medium mb-2">From</label>
-          <select
-            value={fromLocation}
-            onChange={(e) => setFromLocation(e.target.value)}
-            className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-          >
-            <option value="">Select starting location...</option>
-            {OSU_LOCATIONS.map((loc) => (
-              <option key={loc} value={loc}>{loc}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">To</label>
-          <select
-            value={toLocation}
-            onChange={(e) => setToLocation(e.target.value)}
-            className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-          >
-            <option value="">Select destination...</option>
-            {OSU_LOCATIONS.filter(loc => loc !== fromLocation).map((loc) => (
-              <option key={loc} value={loc}>{loc}</option>
-            ))}
-          </select>
-        </div>
+      <div className="space-y-3 mb-4">
+        <input
+          type="text"
+          value={fromLocation}
+          onChange={(e) => setFromLocation(e.target.value)}
+          onKeyDown={onKey}
+          placeholder="From — e.g. Morrill Tower"
+          className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
+        />
+        <input
+          type="text"
+          value={toLocation}
+          onChange={(e) => setToLocation(e.target.value)}
+          onKeyDown={onKey}
+          placeholder="To — e.g. Thompson Library"
+          className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
+        />
+        <button
+          onClick={plan}
+          disabled={loading || !fromLocation.trim() || !toLocation.trim()}
+          className="w-full bg-[#BB0000] text-white py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {loading ? 'Planning…' : 'Plan trip'}
+        </button>
       </div>
 
-      {fromLocation && toLocation && ROUTE_TIMES[fromLocation]?.[toLocation] && (
+      {error && <div className="bg-yellow-50 border-l-4 border-yellow-500 p-3 rounded text-yellow-800 text-sm">{error}</div>}
+
+      {trip && (
         <div className="space-y-4">
-          {(() => {
-            const route = ROUTE_TIMES[fromLocation][toLocation];
-            const walkTime = route.walk;
-            const busTime = route.bus;
-            const scooterTime = Math.round(walkTime / 5);
-            const timeSaved = busTime ? walkTime - busTime : 0;
+          <div className="text-sm text-gray-700 font-medium">
+            {trip.from.name} → {trip.to.name}
+          </div>
 
-            // Calculate Spin and Veo prices
-            const spinPrice = Math.max(3.50, scooterTime * 0.39);
-            const veoPrice = 1.00 + (scooterTime * 0.39);
+          <div className="grid grid-cols-3 gap-3">
+            <div className={card(trip.fastest === 'walk')}>
+              <div className="text-2xl font-bold text-gray-900">{trip.walkMin} min</div>
+              <div className="text-sm text-gray-600 mt-1">Walk</div>
+              <div className="text-xs text-gray-500 mt-1">free</div>
+            </div>
+            <div className={card(trip.fastest === 'bus')}>
+              {trip.bus ? (
+                <>
+                  <div className="text-2xl font-bold text-gray-900">{trip.bus.totalMin} min</div>
+                  <div className="text-sm text-gray-600 mt-1">Bus · {trip.bus.routeCode}</div>
+                  <div className="text-xs text-gray-500 mt-1">{trip.bus.busMin} min on board</div>
+                </>
+              ) : (
+                <>
+                  <div className="text-lg font-medium text-gray-500">—</div>
+                  <div className="text-sm text-gray-600 mt-1">Bus</div>
+                  <div className="text-xs text-gray-500 mt-1">no good route</div>
+                </>
+              )}
+            </div>
+            <div className={card(trip.fastest === 'scooter')}>
+              <div className="text-2xl font-bold text-gray-900">{trip.scooterMin} min</div>
+              <div className="text-sm text-gray-600 mt-1">Scooter</div>
+              <div className="text-xs text-gray-500 mt-1">Veo / Spin</div>
+            </div>
+          </div>
 
-            return (
-              <>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className={`p-6 rounded-lg border-2 ${!busTime || (busTime >= walkTime && scooterTime >= walkTime) ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
-                    <div className="text-center">
-                      <div className="text-4xl mb-2">🚶</div>
-                      <div className="text-2xl font-bold text-gray-900">{walkTime} min</div>
-                      <div className="text-sm text-gray-600 mt-1">Walking</div>
-                      <div className="text-sm text-gray-500 mt-1">Free</div>
-                      {(!busTime || (busTime >= walkTime && scooterTime >= walkTime)) && (
-                        <div className="mt-2 text-xs font-semibold text-green-700">Best Option</div>
-                      )}
-                    </div>
-                  </div>
+          {trip.bus && (
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded text-sm text-blue-900">
+              Take the <strong>{trip.bus.routeName}</strong>: walk ~{trip.bus.walkToBoardMin} min to{' '}
+              <strong>{trip.bus.board.name}</strong>, ride ~{trip.bus.busMin} min, then ~{trip.bus.walkFromAlightMin} min to{' '}
+              <strong>{trip.bus.alight.name}</strong>.
+            </div>
+          )}
 
-                  <div className={`p-6 rounded-lg border-2 ${busTime ? (timeSaved > 0 && scooterTime >= busTime ? 'border-green-500 bg-green-50' : 'border-orange-500 bg-orange-50') : 'border-gray-300 bg-gray-50'}`}>
-                    <div className="text-center">
-                      <div className="text-4xl mb-2">🚌</div>
-                      {busTime ? (
-                        <>
-                          <div className="text-2xl font-bold text-gray-900">{busTime} min</div>
-                          <div className="text-sm text-gray-600 mt-1">Bus</div>
-                          {timeSaved > 0 && scooterTime >= busTime && (
-                            <div className="mt-2">
-                              <div className="text-xs font-semibold text-green-700">Best Option</div>
-                              <div className="text-xs text-green-600">Save {timeSaved} min</div>
-                            </div>
-                          )}
-                          {timeSaved < 0 && (
-                            <div className="mt-2 text-xs text-orange-600">
-                              {Math.abs(timeSaved)} min slower
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <div className="text-lg font-medium text-gray-500">N/A</div>
-                          <div className="text-xs text-gray-500 mt-1">No bus available</div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className={`p-6 rounded-lg border-2 ${scooterTime < walkTime && (!busTime || scooterTime < busTime) ? 'border-green-500 bg-green-50' : 'border-purple-500 bg-purple-50'}`}>
-                    <div className="text-center">
-                      <div className="text-4xl mb-2">🛴</div>
-                      <div className="text-2xl font-bold text-gray-900">{scooterTime} min</div>
-                      <div className="text-sm text-gray-600 mt-1">Spin/Veo</div>
-                      {scooterTime < walkTime && (!busTime || scooterTime < busTime) && (
-                        <div className="mt-2">
-                          <div className="text-xs font-semibold text-green-700">Fastest Option</div>
-                          <div className="text-xs text-green-600">Save {walkTime - scooterTime} min</div>
-                        </div>
-                      )}
-                      <div className="mt-3 space-y-2 text-xs bg-white bg-opacity-70 p-2 rounded">
-                        <div className="border-b pb-2">
-                          <div className="font-semibold text-orange-600">Spin</div>
-                          <div className="text-gray-700">${spinPrice.toFixed(2)}</div>
-                          <div className="text-gray-500 text-xs">($3.50 min + $0.39/min)</div>
-                        </div>
-                        <div>
-                          <div className="font-semibold text-blue-600">Veo</div>
-                          <div className="text-gray-700">${veoPrice.toFixed(2)}</div>
-                          <div className="text-gray-500 text-xs">($1.00 unlock + $0.39/min)</div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 mt-3 justify-center">
-                        <a
-                          href="https://www.spin.app/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-orange-500 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-orange-600 transition-colors"
-                        >
-                          Open Spin
-                        </a>
-                        <a
-                          href="https://www.veoride.com/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-blue-500 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-blue-600 transition-colors"
-                        >
-                          Open Veo
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {busTime && route.routes.length > 0 && (
-                  <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-                    <h3 className="font-semibold text-blue-900 mb-2">Available Bus Routes:</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {route.routes.map((busRoute, idx) => (
-                        <span key={idx} className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm">
-                          {busRoute}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {!busTime && (
-                  <div className="bg-gray-50 border-l-4 border-gray-400 p-4 rounded">
-                    <p className="text-gray-700">
-                      <strong>No bus available:</strong> Consider walking or using a Spin/Veo scooter for this trip!
-                    </p>
-                  </div>
-                )}
-              </>
-            );
-          })()}
-        </div>
-      )}
-
-      {fromLocation && toLocation && !ROUTE_TIMES[fromLocation]?.[toLocation] && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
-          <p className="text-yellow-800">No route information available for this combination.</p>
+          <TripMap geometry={geometry} />
         </div>
       )}
     </div>
