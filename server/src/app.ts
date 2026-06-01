@@ -7,7 +7,8 @@ import { rateLimit, clientIp } from './rateLimit';
 import * as feed from './feed';
 import { getReportStore } from './store';
 import { runAgentLoop, makeRunTurn } from './agent/loop';
-import { TOOL_DEFS, dispatchTool } from './agent/tools';
+import { TOOL_DEFS, dispatchTool, directiveFor } from './agent/tools';
+import { validateReport } from './validateReport';
 import type { AgentRequest, ChatMessage } from './types';
 
 export const MODEL = process.env.AGENT_MODEL ?? 'claude-haiku-4-5';
@@ -59,7 +60,6 @@ app.get('/api/vehicles', (c) => {
 
 // --- crowdsourced reports (server-owned; the fullness/down layer the official feed lacks) ---
 
-const KNOWN_LEVELS = new Set([0, 1, 2, 3, 4]);
 // Rate-limit writes per client (id header, falling back to IP). The NAT caveat is documented.
 const reportLimiter = rateLimit({
   windowMs: 60_000,
@@ -80,25 +80,15 @@ app.post('/api/reports', reportLimiter, async (c) => {
     return c.json({ error: 'bad_json' }, 400);
   }
 
-  // Server-side validation: only known routes; capacity level must be an integer 0..4.
-  const route = typeof body.route === 'string' ? body.route.toUpperCase() : '';
-  const known = new Set(feed.getRoutes().map((r) => r.code));
-  if (!known.has(route)) return c.json({ error: 'unknown_route' }, 400);
+  // Same validator the agent's action tool uses — a malformed write can't slip in even if a client
+  // bypasses the agent and POSTs directly.
+  const v = validateReport(body.kind, body.route, body.level);
+  if (!v.ok) return c.json({ error: v.error }, 400);
 
   const reporterId = c.req.header('x-client-id') || clientIp(c);
   const store = getReportStore();
-
-  if (body.kind === 'capacity') {
-    const level = Number(body.level);
-    if (!Number.isInteger(level) || !KNOWN_LEVELS.has(level)) return c.json({ error: 'bad_level' }, 400);
-    const result = store.addCapacity(route, level, reporterId);
-    return c.json({ ...result, capacity: store.capacity(), down: store.down() });
-  }
-  if (body.kind === 'down') {
-    const result = store.addDown(route, reporterId);
-    return c.json({ ...result, capacity: store.capacity(), down: store.down() });
-  }
-  return c.json({ error: 'bad_kind' }, 400);
+  const result = v.kind === 'capacity' ? store.addCapacity(v.code, v.level!, reporterId) : store.addDown(v.code, reporterId);
+  return c.json({ ...result, capacity: store.capacity(), down: store.down() });
 });
 
 app.post('/api/agent', async (c) => {
@@ -119,6 +109,7 @@ app.post('/api/agent', async (c) => {
         messages,
         runTurn,
         dispatch: dispatchTool,
+        directiveFor,
         onText: (t) => stream.writeSSE({ data: JSON.stringify({ type: 'delta', text: t }) }),
         onEvent: (e) => stream.writeSSE({ data: JSON.stringify(e) }),
         log: (line) => console.log(line),

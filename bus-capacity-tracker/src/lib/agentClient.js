@@ -1,18 +1,19 @@
 // Talks to the backend agent proxy (POST /api/agent) and streams the reply.
 //
 // The proxy sends Server-Sent Events, one JSON object per `data:` line:
-//   { type: 'delta', text }    incremental assistant text
-//   { type: 'done', stop_reason }
-//   { type: 'error', message }
+//   { type: 'delta', text }            incremental assistant text
+//   { type: 'tool', name }             a tool the agent invoked (informational)
+//   { type: 'confirm', action, args }  a write the agent proposes — needs user confirmation
+//   { type: 'ui_directive', action, args }  drive the app UI (Phase 4)
+//   { type: 'done', stop_reason } | { type: 'error', message }
 //
-// streamAgent accumulates the text, invokes onDelta(chunk, accumulated) as it arrives, and
-// returns the full text. It throws if the transport fails or an error arrives before any text,
-// so the caller can fall back to the offline responder.
-export async function streamAgent({ messages, context, signal }, onDelta) {
+// Text chunks go to onDelta; everything else goes to onEvent. Returns the accumulated text, and
+// throws if the transport fails or an error arrives before any text (so the caller can fall back).
+export async function streamAgent({ messages, signal, onDelta, onEvent }) {
   const res = await fetch('/api/agent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, context }),
+    body: JSON.stringify({ messages }),
     signal,
   });
 
@@ -44,6 +45,8 @@ export async function streamAgent({ messages, context, signal }, onDelta) {
       onDelta?.(evt.text, text);
     } else if (evt.type === 'error') {
       pendingError = new Error(evt.message || 'agent_error');
+    } else {
+      onEvent?.(evt);
     }
   };
 
@@ -57,7 +60,6 @@ export async function streamAgent({ messages, context, signal }, onDelta) {
   }
   if (buffer) handleFrame(buffer);
 
-  // If the agent errored and produced nothing usable, surface it so the caller can fall back.
   if (pendingError && !text) throw pendingError;
   return text;
 }
