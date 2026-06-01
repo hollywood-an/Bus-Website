@@ -1,0 +1,279 @@
+import * as feed from '../feed';
+import { getReportStore } from '../store';
+import { ROUTE_TIMES, LOCATIONS, resolveLocation } from '../data/planning';
+
+// Read tools for the agent. Each reads server-owned state (feed cache + report store) and returns a
+// plain JSON-serializable object. Tools validate their own input and return { error } rather than
+// throwing, so the model can recover. Anthropic tool-use schemas are exported as TOOL_DEFS.
+
+export const CAPACITY_LABELS = ['Empty', 'Few seats', 'Filling up', 'Crowded', 'Very full'];
+const round = (n: number) => Math.round(n * 1e6) / 1e6;
+
+function nameForCode(code: string): string {
+  return feed.getRoutes().find((r) => r.code === code)?.name ?? code;
+}
+function codeForName(name: string): string | null {
+  return feed.getRoutes().find((r) => r.name.toLowerCase() === name.toLowerCase())?.code ?? null;
+}
+function knownCode(input: unknown): string | null {
+  if (typeof input !== 'string') return null;
+  const up = input.toUpperCase();
+  return feed.getRoutes().some((r) => r.code === up) ? up : null;
+}
+function minutesAgo(ts: number): number {
+  return Math.round((Date.now() - ts) / 60_000);
+}
+function haversineMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const s =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+function capacityForCode(code: string) {
+  const c = getReportStore().capacity(code)[0];
+  if (!c) return null;
+  return {
+    route: code,
+    name: nameForCode(code),
+    level: c.level,
+    label: CAPACITY_LABELS[c.level],
+    reporters: c.reporterCount,
+    confident: c.confident,
+    reportedMinAgo: minutesAgo(c.newestAt),
+  };
+}
+
+// --- tool implementations ---
+
+function getLiveBuses(input: { route?: unknown }) {
+  const source = feed.vehicleSource();
+  const code = knownCode(input.route);
+  if (input.route && !code) return { error: 'unknown_route', knownRoutes: feed.getRoutes().map((r) => r.code) };
+  const codes = code ? [code] : feed.getRoutes().map((r) => r.code);
+  const buses = codes.flatMap((c) =>
+    feed.getVehicles(c).map((v) => ({
+      route: c,
+      lat: round(v.latitude),
+      lng: round(v.longitude),
+      heading: v.heading ?? null,
+      destination: v.destination ?? null,
+      delayed: v.delayed ?? null,
+    })),
+  );
+  return {
+    source,
+    count: buses.length,
+    buses,
+    note: source === 'mock' ? 'Positions are simulated — no buses run during summer break.' : undefined,
+  };
+}
+
+function getStops(input: { route?: unknown }) {
+  const code = knownCode(input.route);
+  if (!code) return { error: 'unknown_route', knownRoutes: feed.getRoutes().map((r) => r.code) };
+  const detail = feed.getRouteDetail(code);
+  if (!detail) return { error: 'unknown_route' };
+  return {
+    route: code,
+    name: nameForCode(code),
+    stops: detail.stops.map((s) => ({ id: s.id, name: s.name, lat: round(s.latitude), lng: round(s.longitude) })),
+  };
+}
+
+function getNextArrival(input: { stop?: unknown; route?: unknown }) {
+  const stopQuery = typeof input.stop === 'string' ? input.stop.trim().toLowerCase() : '';
+  if (!stopQuery) return { error: 'missing_stop' };
+  const routeFilter = knownCode(input.route);
+  const codes = routeFilter ? [routeFilter] : feed.getRoutes().map((r) => r.code);
+
+  // Find the stop (by name match) on each candidate route, then estimate from nearest vehicle.
+  const estimates: Array<{ route: string; stop: string; etaMin: number; meters: number }> = [];
+  for (const code of codes) {
+    const detail = feed.getRouteDetail(code);
+    const stop = detail?.stops.find((s) => s.name.toLowerCase().includes(stopQuery));
+    if (!stop) continue;
+    const vehicles = feed.getVehicles(code);
+    let best: { etaMin: number; meters: number } | null = null;
+    for (const v of vehicles) {
+      const meters = haversineMeters(v.latitude, v.longitude, stop.latitude, stop.longitude);
+      const etaMin = Math.max(1, Math.round(meters / 5 / 60)); // ~5 m/s straight-line estimate
+      if (!best || meters < best.meters) best = { etaMin, meters: Math.round(meters) };
+    }
+    if (best) estimates.push({ route: code, stop: stop.name, ...best });
+  }
+  estimates.sort((a, b) => a.etaMin - b.etaMin);
+  return {
+    stopQuery: input.stop,
+    source: feed.vehicleSource(),
+    estimates,
+    note:
+      estimates.length === 0
+        ? 'No matching stop with a bus nearby (or no buses running).'
+        : 'ETAs are rough straight-line estimates' + (feed.vehicleSource() === 'mock' ? ' from simulated positions.' : '.'),
+  };
+}
+
+function getCapacity(input: { route?: unknown }) {
+  const code = knownCode(input.route);
+  if (input.route && !code) return { error: 'unknown_route', knownRoutes: feed.getRoutes().map((r) => r.code) };
+  const caps = getReportStore()
+    .capacity(code ?? undefined)
+    .map((c) => ({
+      route: c.route,
+      name: nameForCode(c.route),
+      level: c.level,
+      label: CAPACITY_LABELS[c.level],
+      reporters: c.reporterCount,
+      confident: c.confident,
+      reportedMinAgo: minutesAgo(c.newestAt),
+    }));
+  return { routes: caps, note: caps.length === 0 ? 'No capacity reports right now.' : undefined };
+}
+
+function rankCrowded(most: boolean) {
+  const caps = getReportStore().capacity();
+  if (caps.length === 0) return { result: null, note: 'No capacity reports right now.' };
+  const sorted = [...caps].sort((a, b) => (most ? b.level - a.level : a.level - b.level));
+  const top = sorted[0]!;
+  return {
+    route: top.route,
+    name: nameForCode(top.route),
+    label: CAPACITY_LABELS[top.level],
+    confident: top.confident,
+    ranking: sorted.map((c) => ({ route: c.route, label: CAPACITY_LABELS[c.level], confident: c.confident })),
+  };
+}
+
+function checkDownBuses() {
+  const down = getReportStore().down();
+  const label = (d: { route: string }) => ({ route: d.route, name: nameForCode(d.route) });
+  return {
+    confirmedDown: down.filter((d) => d.confirmed).map(label),
+    unconfirmedReports: down.filter((d) => !d.confirmed).map(label),
+    note:
+      feed.vehicleSource() === 'mock'
+        ? 'Vehicle positions are simulated, so I can’t cross-check live presence right now.'
+        : undefined,
+  };
+}
+
+function planRoute(input: { from?: unknown; to?: unknown }) {
+  const from = resolveLocation(typeof input.from === 'string' ? input.from : '');
+  const to = resolveLocation(typeof input.to === 'string' ? input.to : '');
+  if (!from || !to) return { error: 'unknown_location', knownLocations: LOCATIONS };
+  if (from === to) return { error: 'same_location', location: from };
+  const entry = ROUTE_TIMES[from]?.[to];
+  if (!entry) return { from, to, hasDirectBus: false, note: 'No route data for that pair — walking or a scooter is your bet.' };
+
+  const scooterMin = Math.max(1, Math.round(entry.walk / 5));
+  const busRoutes = entry.routes.map((name) => {
+    const code = codeForName(name);
+    const cap = code ? capacityForCode(code) : null;
+    return { route: name, code, capacity: cap ? cap.label : 'no reports', confident: cap?.confident ?? false };
+  });
+  return {
+    from,
+    to,
+    walkMin: entry.walk,
+    busMin: entry.bus, // rough hand estimate
+    scooterMin,
+    hasDirectBus: Boolean(entry.bus),
+    busRoutes,
+    note: 'Walk time is a real estimate; bus minutes are approximate. Crowding is crowdsourced.',
+  };
+}
+
+export async function dispatchTool(name: string, input: Record<string, unknown>): Promise<unknown> {
+  switch (name) {
+    case 'get_live_buses':
+      return getLiveBuses(input);
+    case 'get_next_arrival':
+      return getNextArrival(input);
+    case 'get_capacity':
+      return getCapacity(input);
+    case 'find_least_crowded':
+      return rankCrowded(false);
+    case 'find_most_crowded':
+      return rankCrowded(true);
+    case 'check_down_buses':
+      return checkDownBuses();
+    case 'plan_route':
+      return planRoute(input);
+    case 'get_stops':
+      return getStops(input);
+    default:
+      return { error: `unknown_tool:${name}` };
+  }
+}
+
+// Anthropic tool definitions (tight descriptions help the model pick the right one).
+export const TOOL_DEFS = [
+  {
+    name: 'get_live_buses',
+    description: 'Live (or simulated) positions of buses on a route. Omit route for all routes.',
+    input_schema: {
+      type: 'object',
+      properties: { route: { type: 'string', description: 'Route code, e.g. CC. Optional.' } },
+    },
+  },
+  {
+    name: 'get_next_arrival',
+    description: 'Rough estimate of the next bus arrival at a named stop, from current bus positions.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        stop: { type: 'string', description: 'Stop name or fragment, e.g. "Ohio Union".' },
+        route: { type: 'string', description: 'Route code to narrow to. Optional.' },
+      },
+      required: ['stop'],
+    },
+  },
+  {
+    name: 'get_capacity',
+    description: 'Crowdsourced fullness for a route (or all). Includes how many riders and whether it is corroborated.',
+    input_schema: {
+      type: 'object',
+      properties: { route: { type: 'string', description: 'Route code. Optional (omit for all).' } },
+    },
+  },
+  {
+    name: 'find_least_crowded',
+    description: 'The least crowded route right now, by crowdsourced reports, with the full ranking.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'find_most_crowded',
+    description: 'The most crowded route right now, by crowdsourced reports, with the full ranking.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'check_down_buses',
+    description: 'Routes riders report as down. Confirmed = corroborated by 2+ riders; unconfirmed = a single report.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'plan_route',
+    description: 'Compare walking vs bus vs scooter between two campus locations, with the serving routes and their crowding.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'Origin campus location.' },
+        to: { type: 'string', description: 'Destination campus location.' },
+      },
+      required: ['from', 'to'],
+    },
+  },
+  {
+    name: 'get_stops',
+    description: 'The stops on a route (name + coordinates).',
+    input_schema: {
+      type: 'object',
+      properties: { route: { type: 'string', description: 'Route code, e.g. CC.' } },
+      required: ['route'],
+    },
+  },
+];

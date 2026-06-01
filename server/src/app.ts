@@ -6,16 +6,17 @@ import { SYSTEM_PROMPT } from './prompt';
 import { rateLimit, clientIp } from './rateLimit';
 import * as feed from './feed';
 import { getReportStore } from './store';
+import { runAgentLoop, makeRunTurn } from './agent/loop';
+import { TOOL_DEFS, dispatchTool } from './agent/tools';
 import type { AgentRequest, ChatMessage } from './types';
 
 export const MODEL = process.env.AGENT_MODEL ?? 'claude-haiku-4-5';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? 'http://localhost:5173';
-const MAX_TOKENS = 700;
 const MAX_MSG_CHARS = 4000;
 const MAX_HISTORY = 12;
-const CAPACITY_LABELS = ['Empty', 'Few seats', 'Filling up', 'Crowded', 'Very full'];
 
 const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY from the environment
+const runTurn = makeRunTurn(anthropic, MODEL, SYSTEM_PROMPT, TOOL_DEFS);
 
 export const app = new Hono();
 
@@ -111,36 +112,20 @@ app.post('/api/agent', async (c) => {
   const messages = normalizeMessages(body?.messages);
   if (messages.length === 0) return c.json({ error: 'no_messages' }, 400);
 
-  // Crowding/down context is now read from the server-owned report store, not trusted from the
-  // client (Phase 1.6 tightening of the Phase 1 transitional `context` field).
-  const context = buildReportContext();
-  const system = context
-    ? `${SYSTEM_PROMPT}\n\nCURRENT BUS STATUS (crowdsourced, server-owned):\n${context}`
-    : SYSTEM_PROMPT;
-
+  // Run the real agent loop: the model fetches what it needs via tools — the prompt carries no data.
   return streamSSE(c, async (stream) => {
     try {
-      const resp = await anthropic.messages.create({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system,
+      await runAgentLoop({
         messages,
-        stream: true,
+        runTurn,
+        dispatch: dispatchTool,
+        onText: (t) => stream.writeSSE({ data: JSON.stringify({ type: 'delta', text: t }) }),
+        onEvent: (e) => stream.writeSSE({ data: JSON.stringify(e) }),
+        log: (line) => console.log(line),
       });
-
-      let stopReason: string | null = null;
-      for await (const event of resp) {
-        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-          await stream.writeSSE({ data: JSON.stringify({ type: 'delta', text: event.delta.text }) });
-        } else if (event.type === 'message_delta') {
-          stopReason = event.delta.stop_reason ?? stopReason;
-        }
-      }
-
-      await stream.writeSSE({ data: JSON.stringify({ type: 'done', stop_reason: stopReason }) });
     } catch (err) {
       // Don't leak internals; the client degrades to its offline responder on error.
-      console.error('[agent] error:', (err as Error)?.message ?? err);
+      console.error('[agent] loop error:', (err as Error)?.message ?? err);
       await stream.writeSSE({ data: JSON.stringify({ type: 'error', message: 'Agent unavailable' }) });
     }
   });
@@ -159,31 +144,4 @@ export function normalizeMessages(input: unknown): ChatMessage[] {
   }
   while (out.length && out[0]!.role !== 'user') out.shift(); // Anthropic requires a leading user turn
   return out.slice(-MAX_HISTORY);
-}
-
-// Compose the crowdsourced status block from the server-owned report store. Honest about
-// confidence: unconfirmed single reports are flagged so the model doesn't overstate them.
-function buildReportContext(): string {
-  const store = getReportStore();
-  const nameByCode = new Map(feed.getRoutes().map((r) => [r.code, r.name]));
-  const lines: string[] = [];
-
-  const capacity = store.capacity();
-  if (capacity.length) {
-    lines.push('Crowding:');
-    for (const cap of capacity) {
-      const label = CAPACITY_LABELS[cap.level] ?? `level ${cap.level}`;
-      const name = nameByCode.get(cap.route) ?? cap.route;
-      lines.push(`- ${name} (${cap.route}): ${label}${cap.confident ? '' : ' [single unconfirmed report]'}`);
-    }
-  }
-
-  const down = store.down();
-  const label = (d: { route: string }) => `${nameByCode.get(d.route) ?? d.route} (${d.route})`;
-  const confirmed = down.filter((d) => d.confirmed).map(label);
-  const unconfirmed = down.filter((d) => !d.confirmed).map(label);
-  if (confirmed.length) lines.push(`Reported DOWN (confirmed by 2+ riders): ${confirmed.join(', ')}`);
-  if (unconfirmed.length) lines.push(`Possibly down (single unconfirmed report): ${unconfirmed.join(', ')}`);
-
-  return lines.join('\n');
 }
