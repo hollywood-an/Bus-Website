@@ -1,6 +1,7 @@
 import { geocode, type Place } from '../geo/geocode';
 import { walkPath } from '../geo/directions';
 import { haversineMeters } from '../geo/util';
+import { sliceRiddenPath } from '../geo/polyline';
 import * as feed from '../feed';
 import type { Stop } from '../feed';
 
@@ -78,13 +79,17 @@ function bestBusOption(from: Place, to: Place): BusOption | null {
       const walkToBoardMin = Math.max(1, Math.round(walkToBoardRaw));
       const busMin = Math.max(1, Math.round(busRaw));
       const walkFromAlightMin = Math.max(1, Math.round(walkFromAlightRaw));
+      const fullPolyline = detail.patterns[0]?.encodedPolyline ?? '';
+      const boardPt = { lat: board.stop.latitude, lng: board.stop.longitude };
+      const alightPt = { lat: alight.stop.latitude, lng: alight.stop.longitude };
       best = {
         routeCode: route.code,
         routeName: route.name,
         routeColor: route.color,
-        routePolyline: detail.patterns[0]?.encodedPolyline ?? '',
-        board: { name: board.stop.name, lat: board.stop.latitude, lng: board.stop.longitude },
-        alight: { name: alight.stop.name, lat: alight.stop.latitude, lng: alight.stop.longitude },
+        // Just the segment the rider is actually on, not the entire route loop.
+        routePolyline: fullPolyline ? sliceRiddenPath(fullPolyline, boardPt, alightPt) : '',
+        board: { name: board.stop.name, ...boardPt },
+        alight: { name: alight.stop.name, ...alightPt },
         walkToBoardMin,
         busMin,
         walkFromAlightMin,

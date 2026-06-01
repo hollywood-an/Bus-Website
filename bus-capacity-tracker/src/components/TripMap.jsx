@@ -140,7 +140,7 @@ export default function TripMap({ geometry }) {
         })}
       </div>
 
-      <div ref={divRef} className="h-[240px] w-full overflow-hidden rounded-lg border border-line" />
+      <div ref={divRef} className="h-[480px] w-full overflow-hidden rounded-lg border border-line" />
 
       <div className="mt-1.5 text-xs text-muted">
         {mode === 'bus' && geometry.bus
