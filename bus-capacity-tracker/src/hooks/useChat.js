@@ -9,7 +9,7 @@ import { streamAgent } from '../lib/agentClient';
 // state: crowding/down context is read server-side from the report store, so the request carries
 // only the conversation. `generateLocalFallback` remains the offline responder (uses static route
 // data + the live aggregates passed in) for when the proxy is unreachable.
-export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityReport, submitBusDownReport }) {
+export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityReport, submitBusDownReport, onUiDirective }) {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
@@ -21,6 +21,8 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
   const handleAgentEvent = (evt) => {
     if (evt?.type === 'confirm') {
       setPendingConfirm({ action: evt.action, args: evt.args || {} });
+    } else if (evt?.type === 'ui_directive') {
+      onUiDirective?.(evt); // App applies it: focus the map, highlight stops, open the planner
     }
   };
 
