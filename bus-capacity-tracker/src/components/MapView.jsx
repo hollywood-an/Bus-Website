@@ -1,5 +1,7 @@
+import { MapPinOff } from 'lucide-react';
+
 // Map-forward: the map dominates the pane. Route data + colors come from the feed (via useGoogleMap).
-export default function MapView({ mapLoaded, routes, selectedBusRoute, setSelectedBusRoute, feedLive, vehicleSource }) {
+export default function MapView({ mapLoaded, mapError, routesError, routes, selectedBusRoute, setSelectedBusRoute, feedLive, vehicleSource }) {
   return (
     <section>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -17,6 +19,12 @@ export default function MapView({ mapLoaded, routes, selectedBusRoute, setSelect
           </span>
         </div>
       </div>
+
+      {routesError && routes.length === 0 && (
+        <div className="mb-3 rounded-lg border border-line bg-surface-2 px-3 py-2 text-xs font-semibold text-ink-soft">
+          Routes unavailable. Check your connection; showing the map without route lines.
+        </div>
+      )}
 
       <div className="mb-3 flex flex-wrap gap-1.5">
         <button
@@ -50,10 +58,20 @@ export default function MapView({ mapLoaded, routes, selectedBusRoute, setSelect
         id="google-map"
         className="relative h-[58vh] overflow-hidden rounded-xl border border-line bg-surface-2 md:h-[calc(100vh-9.5rem)]"
       >
-        {!mapLoaded && (
-          <div className="absolute inset-0 grid place-items-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-scarlet" />
+        {mapError ? (
+          <div className="absolute inset-0 grid place-items-center p-6 text-center">
+            <div>
+              <MapPinOff size={28} className="mx-auto text-muted" />
+              <p className="mt-2 font-bold text-ink">Map unavailable</p>
+              <p className="mt-1 text-sm text-muted">Couldn&apos;t load the map. Check your connection and try again.</p>
+            </div>
           </div>
+        ) : (
+          !mapLoaded && (
+            <div className="absolute inset-0 grid place-items-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-scarlet" />
+            </div>
+          )
         )}
       </div>
 
