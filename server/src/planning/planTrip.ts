@@ -1,5 +1,5 @@
 import { geocode, type Place } from '../geo/geocode';
-import { walkPath } from '../geo/directions';
+import { walkPath, type WalkStep } from '../geo/directions';
 import { haversineMeters } from '../geo/util';
 import { sliceRiddenPath, joinPolylines } from '../geo/polyline';
 import * as feed from '../feed';
@@ -19,11 +19,14 @@ export interface BusOption {
   routeName: string;
   routeColor: string;
   routePolyline: string;
-  board: { name: string; lat: number; lng: number };
-  alight: { name: string; lat: number; lng: number };
+  board: { name: string; lat: number; lng: number; id: string };
+  alight: { name: string; lat: number; lng: number; id: string };
+  stops: number; // intermediate stops ridden past, board to alight
   walkToBoardMin: number;
+  walkToBoardMeters: number;
   busMin: number;
   walkFromAlightMin: number;
+  walkFromAlightMeters: number;
   totalMin: number;
 }
 
@@ -33,6 +36,7 @@ export interface TripPlan {
   walkMin: number;
   walkMeters: number;
   walkPolyline: string;
+  walkSteps: WalkStep[]; // turn-by-turn for the direct route (walk + scooter share it)
   scooterMin: number;
   bus: BusOption | null;
   fastest: 'walk' | 'scooter' | 'bus';
@@ -51,9 +55,33 @@ export async function planTrip(fromQuery: string, toQuery: string): Promise<Trip
   const scooterMin = Math.max(1, Math.round(walk.meters / SCOOTER_MPS / 60));
 
   const bus = bestBusOption(from, to);
+  // For the chosen route, fetch the real walking paths to/from the stops (accurate time + distance for
+  // the itinerary). Only two calls, only for the winner, cached by coord-pair.
+  if (bus) {
+    const [toBoard, fromAlight] = await Promise.all([
+      walkPath({ lat: from.lat, lng: from.lng }, { lat: bus.board.lat, lng: bus.board.lng }),
+      walkPath({ lat: bus.alight.lat, lng: bus.alight.lng }, { lat: to.lat, lng: to.lng }),
+    ]);
+    bus.walkToBoardMin = Math.max(1, Math.round(toBoard.seconds / 60));
+    bus.walkToBoardMeters = Math.round(toBoard.meters);
+    bus.walkFromAlightMin = Math.max(1, Math.round(fromAlight.seconds / 60));
+    bus.walkFromAlightMeters = Math.round(fromAlight.meters);
+    bus.totalMin = bus.walkToBoardMin + bus.busMin + bus.walkFromAlightMin;
+  }
+
   const fastest = pickFastest(walkMin, scooterMin, bus?.totalMin);
 
-  return { from, to, walkMin, walkMeters: Math.round(walk.meters), walkPolyline: walk.encodedPolyline, scooterMin, bus, fastest };
+  return {
+    from,
+    to,
+    walkMin,
+    walkMeters: Math.round(walk.meters),
+    walkPolyline: walk.encodedPolyline,
+    walkSteps: walk.steps,
+    scooterMin,
+    bus,
+    fastest,
+  };
 }
 
 function bestBusOption(from: Place, to: Place): BusOption | null {
@@ -90,11 +118,14 @@ function bestBusOption(from: Place, to: Place): BusOption | null {
         routeColor: route.color,
         // Just the segment the rider is actually on; busMeters disambiguates which arc of a loop.
         routePolyline: fullPolyline ? sliceRiddenPath(fullPolyline, boardPt, alightPt, busMeters) : '',
-        board: { name: board.stop.name, ...boardPt },
-        alight: { name: alight.stop.name, ...alightPt },
+        board: { name: board.stop.name, ...boardPt, id: board.stop.id },
+        alight: { name: alight.stop.name, ...alightPt, id: alight.stop.id },
+        stops: intermediate,
         walkToBoardMin,
+        walkToBoardMeters: Math.round(board.meters),
         busMin,
         walkFromAlightMin,
+        walkFromAlightMeters: Math.round(alight.meters),
         totalMin: walkToBoardMin + busMin + walkFromAlightMin,
       };
     }
