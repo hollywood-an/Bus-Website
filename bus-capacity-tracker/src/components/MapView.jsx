@@ -5,7 +5,7 @@ export default function MapView({ mapLoaded, mapError, routesError, routes, sele
   return (
     <section>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl">Campus map</h1>
+        <h1 className="text-2xl">Ohio State Campus Map</h1>
         <div className="flex items-center gap-2 text-xs font-semibold">
           <span
             className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1"
