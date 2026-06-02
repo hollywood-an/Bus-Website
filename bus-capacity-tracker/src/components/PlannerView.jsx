@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Footprints, Bus, Zap, Navigation } from 'lucide-react';
 import TripMap from './TripMap';
 
@@ -8,6 +8,12 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
   const [trip, setTrip] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Selected mode, shared by the comparison cards, the Directions block, and the map's tabs.
+  const [mode, setMode] = useState('walk');
+
+  useEffect(() => {
+    if (trip) setMode(trip.fastest);
+  }, [trip]);
 
   const plan = async () => {
     if (!fromLocation.trim() || !toLocation.trim()) return;
@@ -54,17 +60,24 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
 
   const inputClass = 'w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm font-semibold text-ink placeholder:font-normal placeholder:text-muted focus:border-scarlet focus:outline-none';
 
-  const Mode = ({ icon, min, label, sub, active }) => {
+  const Mode = ({ id, icon, min, label, sub, disabled = false }) => {
     const Icon = icon;
+    const active = mode === id;
     return (
-    <div
-      className={`rounded-lg border p-3 text-center ${active ? 'border-scarlet bg-scarlet-wash' : 'border-line bg-surface'}`}
-    >
-      <Icon size={18} className={`mx-auto ${active ? 'text-scarlet-ink' : 'text-ink-soft'}`} />
-      <div className="mt-1.5 font-mono text-xl font-bold text-ink">{min}</div>
-      <div className="text-xs font-bold text-ink-soft">{label}</div>
-      <div className="text-[11px] text-muted">{sub}</div>
-    </div>
+      <button
+        type="button"
+        onClick={() => setMode(id)}
+        disabled={disabled}
+        aria-pressed={active}
+        className={`rounded-lg border p-3 text-center transition-colors ${
+          active ? 'border-scarlet bg-scarlet-wash' : 'border-line bg-surface hover:bg-surface-2'
+        } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-surface`}
+      >
+        <Icon size={18} className={`mx-auto ${active ? 'text-scarlet-ink' : 'text-ink-soft'}`} />
+        <div className="mt-1.5 font-mono text-xl font-bold text-ink">{min}</div>
+        <div className="text-xs font-bold text-ink-soft">{label}</div>
+        <div className="text-[11px] text-muted">{sub}</div>
+      </button>
     );
   };
 
@@ -97,26 +110,42 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
           </div>
 
           <div className="grid grid-cols-3 gap-2.5">
-            <Mode icon={Footprints} min={`${trip.walkMin}`} label="Walk" sub="free" active={trip.fastest === 'walk'} />
+            <Mode id="walk" icon={Footprints} min={`${trip.walkMin}`} label="Walk" sub="free" />
             <Mode
+              id="bus"
               icon={Bus}
               min={trip.bus ? `${trip.bus.totalMin}` : '—'}
               label={trip.bus ? `Bus · ${trip.bus.routeCode}` : 'Bus'}
               sub={trip.bus ? `${trip.bus.busMin}m on board` : 'no good route'}
-              active={trip.fastest === 'bus'}
+              disabled={!trip.bus}
             />
-            <Mode icon={Zap} min={`${trip.scooterMin}`} label="Scooter" sub="Veo / Spin" active={trip.fastest === 'scooter'} />
+            <Mode id="scooter" icon={Zap} min={`${trip.scooterMin}`} label="Scooter" sub="Veo / Spin" />
           </div>
 
-          {trip.bus && (
-            <div className="rounded-lg border border-line bg-surface p-3 text-sm text-ink-soft">
-              Take the <strong className="text-ink">{trip.bus.routeName}</strong>: walk ~{trip.bus.walkToBoardMin}m to{' '}
-              <strong className="text-ink">{trip.bus.board.name}</strong>, ride ~{trip.bus.busMin}m, then ~{trip.bus.walkFromAlightMin}m to{' '}
-              <strong className="text-ink">{trip.bus.alight.name}</strong>.
+          <div className="rounded-lg border border-line bg-surface p-3">
+            <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-wide text-muted">Directions</div>
+            <div className="text-sm text-ink-soft">
+              {mode === 'bus' && trip.bus ? (
+                <>
+                  Take the <strong className="text-ink">{trip.bus.routeName}</strong>: walk ~{trip.bus.walkToBoardMin}m to{' '}
+                  <strong className="text-ink">{trip.bus.board.name}</strong>, ride ~{trip.bus.busMin}m, then ~
+                  {trip.bus.walkFromAlightMin}m to <strong className="text-ink">{trip.bus.alight.name}</strong>.
+                </>
+              ) : mode === 'scooter' ? (
+                <>
+                  Scooter (Veo or Spin) straight to <strong className="text-ink">{trip.to.name}</strong>, about{' '}
+                  <strong className="text-ink">{trip.scooterMin} min</strong>.
+                </>
+              ) : (
+                <>
+                  Walk straight to <strong className="text-ink">{trip.to.name}</strong>, about{' '}
+                  <strong className="text-ink">{trip.walkMin} min</strong>.
+                </>
+              )}
             </div>
-          )}
+          </div>
 
-          <TripMap geometry={geometry} />
+          <TripMap geometry={geometry} mode={mode} onModeChange={setMode} />
         </div>
       )}
     </section>

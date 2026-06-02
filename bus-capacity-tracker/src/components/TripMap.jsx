@@ -14,18 +14,27 @@ const MODE_META = {
   scooter: { label: 'Scooter', icon: Zap },
 };
 
-export default function TripMap({ geometry }) {
-  const [mode, setMode] = useState(geometry?.fastest || 'walk');
+export default function TripMap({ geometry, mode: modeProp, onModeChange, heightClass = 'h-[480px] max-h-[60vh] min-h-[260px]' }) {
+  // `mode` can be controlled by a parent (the planner, so its directions follow the tabs) or managed
+  // internally (the assistant / home preview). onModeChange fires on every tab change either way.
+  const controlled = modeProp !== undefined;
+  const [internalMode, setInternalMode] = useState(geometry?.fastest || 'walk');
+  const mode = controlled ? modeProp : internalMode;
+  const selectMode = (m) => {
+    if (!controlled) setInternalMode(m);
+    onModeChange?.(m);
+  };
   const [mapError, setMapError] = useState(false); // Maps JS failed to load (bad/missing key, offline)
   const divRef = useRef(null);
   const mapRef = useRef(null);
   const overlaysRef = useRef([]);
 
-  // Reset to the fastest mode (and clear any prior load error) when a new trip comes in.
+  // Reset to the fastest mode (and clear any prior load error) when a new trip comes in. A controlled
+  // parent owns its own reset, so here we only touch internal state + the error flag.
   useEffect(() => {
-    setMode(geometry?.fastest || 'walk');
+    if (!controlled) setInternalMode(geometry?.fastest || 'walk');
     setMapError(false);
-  }, [geometry]);
+  }, [geometry, controlled]);
 
   const modes = ['walk', 'bus', 'scooter'].filter((m) => m !== 'bus' || geometry?.bus);
   const minFor = (m) => (m === 'walk' ? geometry?.walk?.min : m === 'scooter' ? geometry?.scooter?.min : geometry?.bus?.min);
@@ -127,7 +136,7 @@ export default function TripMap({ geometry }) {
           return (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={() => selectMode(m)}
               aria-pressed={active}
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-bold transition-colors ${
                 active ? 'border-scarlet bg-scarlet-wash text-scarlet-ink' : 'border-line text-ink-soft hover:bg-surface-2'
@@ -145,7 +154,7 @@ export default function TripMap({ geometry }) {
       </div>
 
       {mapError ? (
-        <div className="grid h-[480px] max-h-[60vh] min-h-[260px] w-full place-items-center rounded-lg border border-line bg-surface-2 p-6 text-center">
+        <div className={`grid w-full place-items-center rounded-lg border border-line bg-surface-2 p-6 text-center ${heightClass}`}>
           <div>
             <MapPinOff size={24} className="mx-auto text-muted" />
             <p className="mt-2 text-sm font-bold text-ink">Map unavailable</p>
@@ -153,7 +162,7 @@ export default function TripMap({ geometry }) {
           </div>
         </div>
       ) : (
-        <div ref={divRef} className="h-[480px] max-h-[60vh] min-h-[260px] w-full overflow-hidden rounded-lg border border-line" />
+        <div ref={divRef} className={`w-full overflow-hidden rounded-lg border border-line ${heightClass}`} />
       )}
 
       <div className="mt-1.5 text-xs text-muted">
