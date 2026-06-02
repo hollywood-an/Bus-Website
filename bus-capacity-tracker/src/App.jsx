@@ -34,7 +34,7 @@ export default function BusCapacityTracker() {
   const [plannerTo, setPlannerTo] = useState('');
 
   const reports = useReports();
-  const map = useGoogleMap(view);
+  const map = useGoogleMap(view, { capacity: reports.capacity, down: reports.down });
 
   // Apply UI directives the agent streams (Phase 4): it operates the app, not just describes it.
   const applyDirective = (d) => {
@@ -106,6 +106,13 @@ export default function BusCapacityTracker() {
               setSelectedBusRoute={map.setSelectedBusRoute}
               feedLive={map.feedLive}
               vehicleSource={map.vehicleSource}
+              vehicles={map.vehicles}
+              capacity={reports.capacity}
+              down={reports.down}
+              nameForCode={reports.nameForCode}
+              locateUser={map.locateUser}
+              locateError={map.locateError}
+              setView={setView}
             />
           )}
           {view === 'planner' && (

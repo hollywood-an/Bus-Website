@@ -59,6 +59,14 @@ app.get('/api/vehicles', (c) => {
   });
 });
 
+// Rough next-arrival estimate at a stop, from current bus positions (straight-line). Same estimator the
+// get_next_arrival tool uses. Cheap read of cached state, so not rate-limited (like the other feed reads).
+app.get('/api/arrivals', (c) => {
+  const stop = c.req.query('stop') ?? '';
+  if (!stop.trim()) return c.json({ error: 'missing_stop', estimates: [] }, 400);
+  return c.json(feed.estimateArrivals(stop, c.req.query('route')));
+});
+
 // --- crowdsourced reports (server-owned; the fullness/down layer the official feed lacks) ---
 
 // Rate-limit writes per client (id header, falling back to IP). The NAT caveat is documented.
