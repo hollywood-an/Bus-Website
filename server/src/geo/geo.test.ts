@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { geocode } from './geocode';
 import { walkPath } from './directions';
-import { decodePolyline, encodePolyline, sliceRiddenPath } from './polyline';
+import { decodePolyline, encodePolyline, sliceRiddenPath, joinPolylines } from './polyline';
 
 // With no GOOGLE_MAPS_SERVER_KEY (the test env), these exercise the graceful fallbacks: a small
 // curated campus map for geocoding and a straight-line estimate for walking.
@@ -41,38 +41,60 @@ describe('polyline codec + ridden-segment slice', () => {
     expect(encodePolyline(POINTS)).toBe(ENCODED);
   });
 
-  it('slices to just the board -> alight portion, dropping the rest of the loop', () => {
-    // A square loop of 5 vertices (last == first). Board near v1, alight near v3.
-    const loop: Array<[number, number]> = [
+  it('joins pattern halves into one path, dropping the shared junction', () => {
+    const h1 = encodePolyline([
       [0, 0],
       [0, 1],
-      [1, 1],
-      [1, 0],
+      [0, 2],
+    ]);
+    const h2 = encodePolyline([
+      [0, 2],
+      [0, 3],
+      [0, 4],
+    ]);
+    expect(decodePolyline(joinPolylines([h1, h2]))).toEqual([
       [0, 0],
-    ];
-    const sliced = decodePolyline(sliceRiddenPath(encodePolyline(loop), { lat: 0.01, lng: 1.01 }, { lat: 1.01, lng: 0.01 }));
-    expect(sliced).toEqual([
       [0, 1],
-      [1, 1],
-      [1, 0],
+      [0, 2],
+      [0, 3],
+      [0, 4],
     ]);
   });
 
-  it('wraps past the end of the loop when alight comes before board', () => {
-    const loop: Array<[number, number]> = [
-      [0, 0],
-      [0, 1],
-      [1, 1],
-      [1, 0],
-      [0, 0],
-    ];
-    // Board near v3 ([1,0]), alight near v1 ([0,1]) -> forward path wraps through the end/start.
-    const sliced = decodePolyline(sliceRiddenPath(encodePolyline(loop), { lat: 1.01, lng: 0.01 }, { lat: 0.01, lng: 1.01 }));
-    expect(sliced).toEqual([
-      [1, 0],
-      [0, 0],
-      [0, 0],
-      [0, 1],
-    ]);
+  // A closed loop where the two arcs between the snap points have clearly different lengths:
+  // direct [v1..v3] spans ~2 deg, the wrap arc spans ~4 deg (~111 km per deg of lng at the equator).
+  const LOOP: Array<[number, number]> = [
+    [0, 0],
+    [0, 1],
+    [0, 2],
+    [0, 3],
+    [0, 0],
+  ];
+  const board = { lat: 0, lng: 1.001 }; // near v1
+  const alight = { lat: 0, lng: 3.001 }; // near v3
+  const SHORT = [
+    [0, 1],
+    [0, 2],
+    [0, 3],
+  ];
+  const LONG = [
+    [0, 3],
+    [0, 0],
+    [0, 0],
+    [0, 1],
+  ];
+
+  it('defaults to the shorter arc with no target distance', () => {
+    expect(decodePolyline(sliceRiddenPath(encodePolyline(LOOP), board, alight))).toEqual(SHORT);
+  });
+
+  it('picks the arc whose length matches the ride distance (short hop)', () => {
+    // ~2 deg of lng ~= 222 km; far closer to the direct arc than the ~445 km wrap arc.
+    expect(decodePolyline(sliceRiddenPath(encodePolyline(LOOP), board, alight, 222_000))).toEqual(SHORT);
+  });
+
+  it('picks the long way around when the ride distance says so', () => {
+    // ~4 deg ~= 445 km: the ride goes the long way around the loop, not the short hop.
+    expect(decodePolyline(sliceRiddenPath(encodePolyline(LOOP), board, alight, 445_000))).toEqual(LONG);
   });
 });
