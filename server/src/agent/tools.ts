@@ -21,15 +21,6 @@ function knownCode(input: unknown): string | null {
 function minutesAgo(ts: number): number {
   return Math.round((Date.now() - ts) / 60_000);
 }
-function haversineMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const s =
-    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(s));
-}
 
 function capacityForCode(code: string) {
   const c = getReportStore().capacity(code)[0];
@@ -83,36 +74,9 @@ function getStops(input: { route?: unknown }) {
 }
 
 function getNextArrival(input: { stop?: unknown; route?: unknown }) {
-  const stopQuery = typeof input.stop === 'string' ? input.stop.trim().toLowerCase() : '';
-  if (!stopQuery) return { error: 'missing_stop' };
-  const routeFilter = knownCode(input.route);
-  const codes = routeFilter ? [routeFilter] : feed.getRoutes().map((r) => r.code);
-
-  // Find the stop (by name match) on each candidate route, then estimate from nearest vehicle.
-  const estimates: Array<{ route: string; stop: string; etaMin: number; meters: number }> = [];
-  for (const code of codes) {
-    const detail = feed.getRouteDetail(code);
-    const stop = detail?.stops.find((s) => s.name.toLowerCase().includes(stopQuery));
-    if (!stop) continue;
-    const vehicles = feed.getVehicles(code);
-    let best: { etaMin: number; meters: number } | null = null;
-    for (const v of vehicles) {
-      const meters = haversineMeters(v.latitude, v.longitude, stop.latitude, stop.longitude);
-      const etaMin = Math.max(1, Math.round(meters / 5 / 60)); // ~5 m/s straight-line estimate
-      if (!best || meters < best.meters) best = { etaMin, meters: Math.round(meters) };
-    }
-    if (best) estimates.push({ route: code, stop: stop.name, ...best });
-  }
-  estimates.sort((a, b) => a.etaMin - b.etaMin);
-  return {
-    stopQuery: input.stop,
-    source: feed.vehicleSource(),
-    estimates,
-    note:
-      estimates.length === 0
-        ? 'No matching stop with a bus nearby (or no buses running).'
-        : 'ETAs are rough straight-line estimates' + (feed.vehicleSource() === 'mock' ? ' from simulated positions.' : '.'),
-  };
+  if (typeof input.stop !== 'string' || !input.stop.trim()) return { error: 'missing_stop' };
+  // Shared estimator (also serves GET /api/arrivals). Keep the raw stop string in the reply.
+  return { ...feed.estimateArrivals(input.stop, input.route), stopQuery: input.stop };
 }
 
 function getCapacity(input: { route?: unknown }) {
