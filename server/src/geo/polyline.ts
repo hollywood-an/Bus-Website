@@ -70,18 +70,56 @@ function nearestVertex(points: Array<[number, number]>, lat: number, lng: number
   return bestIdx;
 }
 
+function pathLengthMeters(pts: Array<[number, number]>): number {
+  let m = 0;
+  for (let i = 1; i < pts.length; i++) m += haversineMeters(pts[i - 1]![0], pts[i - 1]![1], pts[i]![0], pts[i]![1]);
+  return m;
+}
+
+// Join several pattern polylines (e.g. a route's outbound + inbound halves) into one ordered path.
+// OSU gives patterns in travel order with shared endpoints, so concatenating their points yields the
+// full loop; consecutive duplicate points (the shared junctions) are dropped.
+export function joinPolylines(encodedList: string[]): string {
+  const all: Array<[number, number]> = [];
+  for (const enc of encodedList) {
+    for (const p of decodePolyline(enc)) {
+      const last = all[all.length - 1];
+      if (last && last[0] === p[0] && last[1] === p[1]) continue;
+      all.push(p);
+    }
+  }
+  return encodePolyline(all);
+}
+
 // Return the encoded polyline for just the board -> alight portion of a (possibly looping) route.
-// Falls back to the full polyline if it can't be decoded.
+// Snapping the two stops to the nearest polyline vertices leaves two candidate arcs between them; we
+// pick the one whose length best matches `targetMeters` (the ride distance computed from the stop
+// sequence), which is what disambiguates the short hop from the long way around a loop. Without a
+// target we fall back to the shorter arc. Falls back to the whole polyline if it can't be decoded.
 export function sliceRiddenPath(
   encoded: string,
   board: { lat: number; lng: number },
   alight: { lat: number; lng: number },
+  targetMeters?: number,
 ): string {
   const pts = decodePolyline(encoded);
   if (pts.length < 2) return encoded;
   const bi = nearestVertex(pts, board.lat, board.lng);
   const ai = nearestVertex(pts, alight.lat, alight.lng);
   if (bi === ai) return encoded;
-  const segment = ai > bi ? pts.slice(bi, ai + 1) : pts.slice(bi).concat(pts.slice(0, ai + 1));
-  return encodePolyline(segment);
+
+  const lo = Math.min(bi, ai);
+  const hi = Math.max(bi, ai);
+  const direct = pts.slice(lo, hi + 1); // the contiguous [lo..hi] arc
+  const wrap = pts.slice(hi).concat(pts.slice(0, lo + 1)); // the complementary arc, around the seam
+
+  let chosen: Array<[number, number]>;
+  if (typeof targetMeters === 'number' && targetMeters > 0) {
+    const dErr = Math.abs(pathLengthMeters(direct) - targetMeters);
+    const wErr = Math.abs(pathLengthMeters(wrap) - targetMeters);
+    chosen = dErr <= wErr ? direct : wrap;
+  } else {
+    chosen = pathLengthMeters(direct) <= pathLengthMeters(wrap) ? direct : wrap;
+  }
+  return encodePolyline(chosen);
 }

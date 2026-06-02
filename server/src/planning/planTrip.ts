@@ -1,7 +1,7 @@
 import { geocode, type Place } from '../geo/geocode';
 import { walkPath } from '../geo/directions';
 import { haversineMeters } from '../geo/util';
-import { sliceRiddenPath } from '../geo/polyline';
+import { sliceRiddenPath, joinPolylines } from '../geo/polyline';
 import * as feed from '../feed';
 import type { Stop } from '../feed';
 
@@ -79,15 +79,17 @@ function bestBusOption(from: Place, to: Place): BusOption | null {
       const walkToBoardMin = Math.max(1, Math.round(walkToBoardRaw));
       const busMin = Math.max(1, Math.round(busRaw));
       const walkFromAlightMin = Math.max(1, Math.round(walkFromAlightRaw));
-      const fullPolyline = detail.patterns[0]?.encodedPolyline ?? '';
+      // Join ALL patterns (e.g. outbound + inbound halves) into the full route path before slicing;
+      // a single pattern is only part of a loop, so the board stop may not lie on it.
+      const fullPolyline = joinPolylines(detail.patterns.map((p) => p.encodedPolyline).filter(Boolean));
       const boardPt = { lat: board.stop.latitude, lng: board.stop.longitude };
       const alightPt = { lat: alight.stop.latitude, lng: alight.stop.longitude };
       best = {
         routeCode: route.code,
         routeName: route.name,
         routeColor: route.color,
-        // Just the segment the rider is actually on, not the entire route loop.
-        routePolyline: fullPolyline ? sliceRiddenPath(fullPolyline, boardPt, alightPt) : '',
+        // Just the segment the rider is actually on; busMeters disambiguates which arc of a loop.
+        routePolyline: fullPolyline ? sliceRiddenPath(fullPolyline, boardPt, alightPt, busMeters) : '',
         board: { name: board.stop.name, ...boardPt },
         alight: { name: alight.stop.name, ...alightPt },
         walkToBoardMin,
