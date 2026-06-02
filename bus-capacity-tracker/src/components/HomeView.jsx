@@ -172,44 +172,46 @@ export default function HomeView({ setView, setPlannerFrom, setPlannerTo, setCha
         </div>
       </div>
 
-      {/* Assistant (live interactive map preview left on desktop, copy right; copy first on mobile) */}
-      <div className="animate-rise grid items-start gap-5 md:grid-cols-2" style={{ animationDelay: '140ms' }}>
-        <div className="md:order-2">
+      {/* Assistant — full-width showcase: header + example chips, then the real interactive map */}
+      <div className="animate-rise rounded-2xl border border-line bg-surface p-4 sm:p-5" style={{ animationDelay: '140ms' }}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-scarlet-wash text-scarlet-ink">
               <Bot size={22} />
             </span>
-            <h2 className="text-xl">Assistant</h2>
+            <div>
+              <h2 className="text-xl">Assistant</h2>
+              <p className="text-sm text-muted">Ask in plain words. It plans the trip and maps it, right in the chat.</p>
+            </div>
           </div>
-          <p className="mt-2.5 text-sm leading-relaxed text-ink-soft">
-            Ask in plain words. It plans the trip and maps it, right in the chat.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button onClick={() => goAssistant('')} className={primaryBtn}>
-              Open the assistant <ArrowRight size={15} />
-            </button>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {['How do I get from Morrill to the Union?', 'Which bus is least crowded?', 'Is the Connector packed?'].map((q) => (
-              <button key={q} onClick={() => goAssistant(q)} className={chip}>
-                {q}
-              </button>
-            ))}
-          </div>
+          <button onClick={() => goAssistant('')} className={primaryBtn}>
+            Open the assistant <ArrowRight size={15} />
+          </button>
         </div>
-        <div className="space-y-2.5 rounded-xl border border-line bg-surface p-3.5 md:order-1">
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {['How do I get from Morrill to the Union?', 'Which bus is least crowded?', 'Is the Connector packed?'].map((q) => (
+            <button key={q} onClick={() => goAssistant(q)} className={chip}>
+              {q}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 rounded-xl border border-line bg-surface-2 p-3">
           <div className="flex justify-end">
             <div className="max-w-[85%] rounded-2xl rounded-br-md bg-scarlet px-3.5 py-2 text-sm font-medium text-white">
               How do I get from Morrill to the Union?
             </div>
           </div>
-          {geometry ? (
-            <TripMap geometry={geometry} />
-          ) : (
-            <div className="grid h-[260px] w-full place-items-center rounded-lg border border-line bg-surface-2">
-              <div className="h-7 w-7 animate-spin rounded-full border-2 border-line border-t-scarlet" />
-            </div>
-          )}
+          <div className="mt-2.5">
+            {geometry ? (
+              <TripMap geometry={geometry} heightClass="h-[300px] sm:h-[360px]" />
+            ) : (
+              <div className="grid h-[300px] w-full place-items-center rounded-lg border border-line bg-surface">
+                <div className="h-7 w-7 animate-spin rounded-full border-2 border-line border-t-scarlet" />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
