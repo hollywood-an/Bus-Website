@@ -2,16 +2,28 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { loadMaps } from '../lib/loadMaps';
 
 // Drives the campus map from the server feed (Phase 1.5). Route list, stops, and polylines come
-// from /api/routes[/:code]; vehicles from /api/vehicles (live or mock, server's choice). The old
-// 25-waypoint Google Directions chunking hack is gone — we decode the feed's real encodedPolyline
-// with the Maps geometry library instead.
+// from /api/routes[/:code]; vehicles from /api/vehicles (live or mock, server's choice). Crowding +
+// down status (passed in from useReports) enrich the tap popups and dim routes reported down; tapping
+// a stop also fetches a rough next-arrival ETA from /api/arrivals.
 //
-// The server always returns *something* (last-known-good cache → committed fixtures), so the map
+// The server always returns *something* (last-known-good cache -> committed fixtures), so the map
 // degrades gracefully; `feedLive` surfaces when we're not on fresh data.
 const FALLBACK_CENTER = { lat: 40.0017, lng: -83.0197 };
 const VEHICLE_POLL_MS = 15000;
+const CAP_LABELS = ['Empty', 'Few seats', 'Filling up', 'Crowded', 'Very full'];
+const CAP_COLORS = ['var(--cap-0)', 'var(--cap-1)', 'var(--cap-2)', 'var(--cap-3)', 'var(--cap-4)'];
+const USER_DOT = '#1d4ed8';
 
-export function useGoogleMap(view) {
+function haversineMeters(aLat, aLng, bLat, bLng) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false); // Maps JS failed to load (bad/missing key, offline)
   const [routesError, setRoutesError] = useState(false); // /api/routes unreachable
@@ -19,15 +31,36 @@ export function useGoogleMap(view) {
   const [selectedBusRoute, setSelectedBusRoute] = useState('all');
   const [feedLive, setFeedLive] = useState(true);
   const [vehicleSource, setVehicleSource] = useState('mock');
+  const [vehicles, setVehicles] = useState([]); // latest fetched positions (for the detail panel count)
   const [highlightedStops, setHighlightStops] = useState([]); // stop ids the agent asked to emphasize
+  const [locateError, setLocateError] = useState('');
 
   const mapRef = useRef(null);
   const infoWindowRef = useRef(null);
   const detailCacheRef = useRef(new Map()); // code -> { stops, patterns }
   const routeOverlaysRef = useRef([]); // stop markers + polylines for the current selection
   const vehicleMarkersRef = useRef([]);
+  const userMarkerRef = useRef(null);
+  const popupTokenRef = useRef(0); // guards async ETA patches against a newer popup
+  // Latest crowding/down, read inside imperative popup builders without forcing a map redraw.
+  const capRef = useRef([]);
+  const downRef = useRef([]);
+  useEffect(() => {
+    capRef.current = capacity;
+  }, [capacity]);
+  useEffect(() => {
+    downRef.current = down;
+  }, [down]);
 
   const colorFor = useCallback((code) => routes.find((r) => r.code === code)?.color || '#64748b', [routes]);
+  const nameFor = useCallback((code) => routes.find((r) => r.code === code)?.name || code, [routes]);
+  const crowdingHtml = useCallback((code) => {
+    const c = capRef.current.find((x) => x.route === code);
+    if (!c) return '<span style="color:#666">No crowding reports yet</span>';
+    const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:9px;background:${CAP_COLORS[c.level]};margin-right:5px;vertical-align:-1px"></span>`;
+    return `${dot}${CAP_LABELS[c.level]}${c.confident ? '' : ' (unconfirmed)'}`;
+  }, []);
+  const isDown = useCallback((code) => downRef.current.some((d) => d.route === code && d.confirmed), []);
 
   // 1) Load the Maps API (shared loader; geometry lib for decodePath) when the map view first opens.
   useEffect(() => {
@@ -109,6 +142,7 @@ export function useGoogleMap(view) {
         const detail = await detailFor(code);
         if (cancelled || !detail) continue;
         const color = colorFor(code);
+        const downRoute = isDown(code); // dim routes reported down (secondary cue; panel carries the text)
 
         for (const pattern of detail.patterns) {
           const path = window.google.maps.geometry.encoding.decodePath(pattern.encodedPolyline);
@@ -116,8 +150,8 @@ export function useGoogleMap(view) {
             path,
             geodesic: false,
             strokeColor: color,
-            strokeOpacity: opacity,
-            strokeWeight: weight,
+            strokeOpacity: downRoute ? 0.25 : opacity,
+            strokeWeight: downRoute ? 2 : weight,
             map,
           });
           routeOverlaysRef.current.push(line);
@@ -142,10 +176,32 @@ export function useGoogleMap(view) {
             },
           });
           marker.addListener('click', () => {
+            if (!infoWindowRef.current) return;
+            const token = ++popupTokenRef.current;
+            const downHtml = isDown(code)
+              ? '<div style="color:var(--danger);font-weight:600;margin-top:3px">Reported down</div>'
+              : '';
             infoWindowRef.current.setContent(
-              `<div style="padding:6px 8px;font-family:system-ui,sans-serif"><strong>${stop.name}</strong><br><span style="font-size:12px;color:#666">${code}</span></div>`,
+              `<div style="padding:6px 8px;font-family:system-ui,sans-serif;min-width:170px;line-height:1.45">
+                 <strong>${stop.name}</strong>
+                 <div style="font-size:12px;margin-top:2px">${nameFor(code)} <span style="color:#888">(${code})</span></div>
+                 <div style="font-size:12px;margin-top:4px">${crowdingHtml(code)}</div>
+                 ${downHtml}
+                 <div style="font-size:12px;color:#666;margin-top:5px" id="iw-eta">Checking next arrival&hellip;</div>
+               </div>`,
             );
             infoWindowRef.current.open(map, marker);
+            const q = `/api/arrivals?stop=${encodeURIComponent(stop.name)}${selectedBusRoute !== 'all' ? `&route=${code}` : ''}`;
+            fetch(q)
+              .then((r) => r.json())
+              .then((d) => {
+                if (token !== popupTokenRef.current) return; // a newer popup opened
+                const node = document.getElementById('iw-eta');
+                if (!node) return;
+                const list = (d.estimates || []).slice(0, 3);
+                node.textContent = list.length ? `Next: ${list.map((e) => `${e.route} ~${e.etaMin} min`).join(', ')}` : 'No buses nearby right now';
+              })
+              .catch(() => {});
           });
           routeOverlaysRef.current.push(marker);
           bounds.extend(position);
@@ -163,7 +219,7 @@ export function useGoogleMap(view) {
     return () => {
       cancelled = true;
     };
-  }, [mapLoaded, routes, selectedBusRoute, view, colorFor, highlightedStops]);
+  }, [mapLoaded, routes, selectedBusRoute, view, colorFor, nameFor, crowdingHtml, isDown, highlightedStops]);
 
   // 4) Poll vehicles and redraw their markers while on the map view.
   useEffect(() => {
@@ -178,6 +234,7 @@ export function useGoogleMap(view) {
         .catch(() => null);
       if (cancelled || !d) return;
       if (d.source) setVehicleSource(d.source);
+      setVehicles(Array.isArray(d.vehicles) ? d.vehicles : []);
 
       vehicleMarkersRef.current.forEach((m) => m.setMap(null));
       vehicleMarkersRef.current = [];
@@ -186,7 +243,7 @@ export function useGoogleMap(view) {
         const marker = new window.google.maps.Marker({
           position: { lat: v.latitude, lng: v.longitude },
           map: mapRef.current,
-          title: `${v.route}${v.destination ? ` → ${v.destination}` : ''}`,
+          title: `${v.route}${v.destination ? ` to ${v.destination}` : ''}`,
           zIndex: 1000,
           icon: {
             path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
@@ -198,6 +255,21 @@ export function useGoogleMap(view) {
             strokeWeight: 1.5,
           },
         });
+        marker.addListener('click', () => {
+          if (!infoWindowRef.current) return;
+          ++popupTokenRef.current;
+          const dest = v.destination ? ` to ${v.destination}` : '';
+          const late = v.delayed ? '<div style="color:var(--warn);font-weight:600;margin-top:3px">Running late</div>' : '';
+          infoWindowRef.current.setContent(
+            `<div style="padding:6px 8px;font-family:system-ui,sans-serif;min-width:150px;line-height:1.45">
+               <strong>${nameFor(v.route)}</strong> <span style="color:#888">(${v.route})</span>
+               <div style="font-size:12px;margin-top:2px">Bus${dest}</div>
+               <div style="font-size:12px;margin-top:4px">${crowdingHtml(v.route)}</div>
+               ${late}
+             </div>`,
+          );
+          infoWindowRef.current.open(mapRef.current, marker);
+        });
         vehicleMarkersRef.current.push(marker);
       });
     };
@@ -208,7 +280,7 @@ export function useGoogleMap(view) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [mapLoaded, routes, selectedBusRoute, view, colorFor]);
+  }, [mapLoaded, routes, selectedBusRoute, view, colorFor, nameFor, crowdingHtml]);
 
   // 5) Tear down the map instance when leaving the map view (its DOM node unmounts), so re-entry
   //    rebuilds against a fresh #google-map element.
@@ -217,8 +289,79 @@ export function useGoogleMap(view) {
       mapRef.current = null;
       routeOverlaysRef.current = [];
       vehicleMarkersRef.current = [];
+      userMarkerRef.current = null;
     }
   }, [view]);
 
-  return { mapLoaded, mapError, routesError, routes, selectedBusRoute, setSelectedBusRoute, feedLive, vehicleSource, setHighlightStops };
+  // Center on the user's location, drop a "you are here" marker, and point out the nearest stop.
+  const locateUser = useCallback(() => {
+    setLocateError('');
+    if (!navigator.geolocation) {
+      setLocateError('Location is not available on this device.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const map = mapRef.current;
+        if (!map || !window.google) return;
+        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+
+        if (userMarkerRef.current) userMarkerRef.current.setMap(null);
+        userMarkerRef.current = new window.google.maps.Marker({
+          position: here,
+          map,
+          title: 'You are here',
+          zIndex: 2000,
+          icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: USER_DOT, fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 },
+        });
+
+        // Nearest stop across whatever route detail is currently loaded.
+        let nearest = null;
+        for (const detail of detailCacheRef.current.values()) {
+          for (const stop of detail.stops || []) {
+            const m = haversineMeters(here.lat, here.lng, stop.latitude, stop.longitude);
+            if (!nearest || m < nearest.m) nearest = { stop, m };
+          }
+        }
+
+        const bounds = new window.google.maps.LatLngBounds();
+        bounds.extend(here);
+        if (nearest) {
+          bounds.extend({ lat: nearest.stop.latitude, lng: nearest.stop.longitude });
+          map.fitBounds(bounds, 90);
+          if (infoWindowRef.current) {
+            ++popupTokenRef.current;
+            infoWindowRef.current.setContent(
+              `<div style="padding:6px 8px;font-family:system-ui,sans-serif;line-height:1.45">
+                 <strong>${nearest.stop.name}</strong>
+                 <div style="font-size:12px;color:#666;margin-top:2px">Nearest stop, ${Math.round(nearest.m)} m away</div>
+               </div>`,
+            );
+            infoWindowRef.current.setPosition({ lat: nearest.stop.latitude, lng: nearest.stop.longitude });
+            infoWindowRef.current.open(map);
+          }
+        } else {
+          map.panTo(here);
+          map.setZoom(16);
+        }
+      },
+      () => setLocateError('Location unavailable. Allow location access and try again.'),
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  }, []);
+
+  return {
+    mapLoaded,
+    mapError,
+    routesError,
+    routes,
+    selectedBusRoute,
+    setSelectedBusRoute,
+    feedLive,
+    vehicleSource,
+    vehicles,
+    setHighlightStops,
+    locateUser,
+    locateError,
+  };
 }
