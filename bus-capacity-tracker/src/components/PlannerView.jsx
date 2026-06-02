@@ -1,6 +1,92 @@
 import { useState, useEffect } from 'react';
-import { Footprints, Bus, Zap, Navigation } from 'lucide-react';
+import { Footprints, Bus, Zap, Navigation, ArrowUp, CornerUpLeft, CornerUpRight } from 'lucide-react';
 import TripMap from './TripMap';
+import RouteChip from './RouteChip';
+
+// meters -> imperial, the way a US transit app shows it (feet under ~0.1 mi, else miles).
+function fmtDist(m) {
+  if (m == null) return '';
+  const ft = m * 3.28084;
+  if (ft < 528) return `${Math.max(10, Math.round(ft / 10) * 10)} ft`;
+  return `${(m / 1609.34).toFixed(1)} mi`;
+}
+function maneuverIcon(maneuver = '') {
+  const u = String(maneuver).toUpperCase();
+  if (u.includes('LEFT')) return CornerUpLeft;
+  if (u.includes('RIGHT')) return CornerUpRight;
+  return ArrowUp;
+}
+
+// Google-Maps-style turn-by-turn list (walk + scooter share the road path).
+function StepList({ steps }) {
+  return (
+    <ol className="mt-2 max-h-72 divide-y divide-line overflow-y-auto pr-1">
+      {steps.map((s, i) => {
+        const Icon = maneuverIcon(s.maneuver);
+        return (
+          <li key={i} className="flex items-start gap-3 py-2">
+            <Icon size={16} className="mt-0.5 shrink-0 text-ink-soft" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm text-ink">{s.text}</div>
+              {s.meters ? <div className="mt-0.5 font-mono text-[11px] text-muted">{fmtDist(s.meters)}</div> : null}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// One row of the bus itinerary timeline: a marker + a connector line down to the next row.
+function TimelineRow({ marker, connector, last, children }) {
+  return (
+    <li className="flex gap-3">
+      <div className="flex w-5 shrink-0 flex-col items-center">
+        {marker}
+        {!last && <span className="mt-1 w-[2px] flex-1 rounded-full" style={{ backgroundColor: connector }} />}
+      </div>
+      <div className="flex-1 pb-4">{children}</div>
+    </li>
+  );
+}
+
+// Google-Maps-style transit itinerary: walk to the stop, board (route + stop id + how many stops),
+// get off, walk to the destination.
+function BusItinerary({ trip }) {
+  const b = trip.bus;
+  const color = b.routeColor || 'var(--ink-soft)';
+  const dot = <span className="mt-1 h-3 w-3 rounded-full" style={{ backgroundColor: color }} />;
+  const ring = <span className="mt-1 h-3 w-3 rounded-full border-2 bg-surface" style={{ borderColor: color }} />;
+  const foot = <Footprints size={15} className="mt-0.5 text-ink-soft" />;
+  return (
+    <ol className="mt-2 text-sm">
+      <TimelineRow marker={foot} connector="var(--line-2)">
+        <span className="text-ink-soft">
+          Walk <span className="font-mono">{b.walkToBoardMin} min</span> ({fmtDist(b.walkToBoardMeters)}) to{' '}
+          <strong className="text-ink">{b.board.name}</strong>
+        </span>
+      </TimelineRow>
+      <TimelineRow marker={dot} connector={color}>
+        <div className="flex flex-wrap items-center gap-1.5 font-bold text-ink">
+          Board <RouteChip code={b.routeCode} color={b.routeColor} /> {b.routeName}
+        </div>
+        <div className="mt-0.5 font-mono text-[11px] text-muted">
+          ride ~{b.busMin} min · {b.stops} stop{b.stops === 1 ? '' : 's'} · Stop {b.board.id}
+        </div>
+      </TimelineRow>
+      <TimelineRow marker={ring} connector="var(--line-2)">
+        <div className="font-bold text-ink">Get off at {b.alight.name}</div>
+        <div className="mt-0.5 font-mono text-[11px] text-muted">Stop {b.alight.id}</div>
+      </TimelineRow>
+      <TimelineRow marker={foot} last>
+        <span className="text-ink-soft">
+          Walk <span className="font-mono">{b.walkFromAlightMin} min</span> ({fmtDist(b.walkFromAlightMeters)}) to{' '}
+          <strong className="text-ink">{trip.to.name}</strong>
+        </span>
+      </TimelineRow>
+    </ol>
+  );
+}
 
 // Free-text, geocoded planning. from/to controlled by App; trip comes from GET /api/plan (the same
 // planTrip core the agent uses). Restyled to the Bold Buckeye system.
@@ -122,27 +208,25 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
             <Mode id="scooter" icon={Zap} min={`${trip.scooterMin}`} label="Scooter" sub="Veo / Spin" />
           </div>
 
-          <div className="rounded-lg border border-line bg-surface p-3">
-            <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-wide text-muted">Directions</div>
-            <div className="text-sm text-ink-soft">
-              {mode === 'bus' && trip.bus ? (
-                <>
-                  Take the <strong className="text-ink">{trip.bus.routeName}</strong>: walk ~{trip.bus.walkToBoardMin}m to{' '}
-                  <strong className="text-ink">{trip.bus.board.name}</strong>, ride ~{trip.bus.busMin}m, then ~
-                  {trip.bus.walkFromAlightMin}m to <strong className="text-ink">{trip.bus.alight.name}</strong>.
-                </>
-              ) : mode === 'scooter' ? (
-                <>
-                  Scooter (Veo or Spin) straight to <strong className="text-ink">{trip.to.name}</strong>, about{' '}
-                  <strong className="text-ink">{trip.scooterMin} min</strong>.
-                </>
-              ) : (
-                <>
-                  Walk straight to <strong className="text-ink">{trip.to.name}</strong>, about{' '}
-                  <strong className="text-ink">{trip.walkMin} min</strong>.
-                </>
-              )}
-            </div>
+          <div className="rounded-lg border border-line bg-surface p-3.5">
+            <div className="font-mono text-[11px] font-bold uppercase tracking-wide text-muted">Directions</div>
+            {mode === 'bus' && trip.bus ? (
+              <BusItinerary trip={trip} />
+            ) : (
+              <div>
+                <div className="mt-1 text-sm text-ink-soft">
+                  {mode === 'scooter' ? 'Scooter' : 'Walk'} to <strong className="text-ink">{trip.to.name}</strong>{' '}
+                  <span className="font-mono text-muted">
+                    · {mode === 'scooter' ? trip.scooterMin : trip.walkMin} min{trip.walkMeters ? ` · ${fmtDist(trip.walkMeters)}` : ''}
+                  </span>
+                </div>
+                {trip.walkSteps?.length ? (
+                  <StepList steps={trip.walkSteps} />
+                ) : (
+                  <div className="mt-2 text-sm text-ink-soft">Head straight there; it is a short, direct route.</div>
+                )}
+              </div>
+            )}
           </div>
 
           <TripMap geometry={geometry} mode={mode} onModeChange={setMode} />
