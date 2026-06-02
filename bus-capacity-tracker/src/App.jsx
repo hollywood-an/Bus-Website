@@ -67,7 +67,7 @@ export default function BusCapacityTracker() {
         className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-surface/95 px-4 py-2.5 backdrop-blur md:hidden"
         style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top))' }}
       >
-        <Header compact />
+        <Header compact onHome={() => setView('home')} />
         <Points value={reports.userPoints} />
       </header>
 
@@ -75,7 +75,7 @@ export default function BusCapacityTracker() {
         {/* desktop rail */}
         <aside className="hidden border-r border-line bg-surface-2 md:sticky md:top-0 md:flex md:h-screen md:w-60 md:shrink-0 md:flex-col md:px-3 md:py-4">
           <div className="px-2">
-            <Header />
+            <Header onHome={() => setView('home')} />
           </div>
           <div className="mt-6 flex-1">
             <Nav view={view} setView={setView} variant="rail" />
