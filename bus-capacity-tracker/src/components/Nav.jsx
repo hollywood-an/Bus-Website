@@ -1,7 +1,8 @@
-import { Map, Navigation, Bot, Megaphone, Gauge } from 'lucide-react';
+import { Home, Map, Navigation, Bot, Megaphone, Gauge } from 'lucide-react';
 
 // One nav, two renderings: a labeled left rail on desktop, an icon tab bar on mobile.
 const NAV_ITEMS = [
+  { id: 'home', label: 'Home', icon: Home },
   { id: 'map', label: 'Map', icon: Map },
   { id: 'planner', label: 'Plan', icon: Navigation },
   { id: 'ai', label: 'Assistant', icon: Bot },
@@ -13,7 +14,7 @@ export default function Nav({ view, setView, variant = 'rail' }) {
   if (variant === 'tabs') {
     return (
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-surface/95 backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-line bg-surface/95 backdrop-blur md:hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         aria-label="Primary"
       >

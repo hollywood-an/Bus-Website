@@ -12,6 +12,7 @@ import ReportView from './components/ReportView';
 import MapView from './components/MapView';
 import PlannerView from './components/PlannerView';
 import AiView from './components/AiView';
+import HomeView from './components/HomeView';
 
 function Points({ value }) {
   return (
@@ -28,7 +29,7 @@ function Points({ value }) {
 // App shell: brand + nav (left rail on desktop, bottom tab bar on mobile) around a content pane the
 // map/results dominate. State lives in hooks; views are presentational.
 export default function BusCapacityTracker() {
-  const [view, setView] = useState('map');
+  const [view, setView] = useState('home');
   const [plannerFrom, setPlannerFrom] = useState('');
   const [plannerTo, setPlannerTo] = useState('');
 
@@ -86,6 +87,15 @@ export default function BusCapacityTracker() {
 
         {/* content pane */}
         <main className="min-w-0 flex-1 px-4 pb-24 pt-4 md:px-6 md:py-6 md:pb-6">
+          {view === 'home' && (
+            <HomeView
+              setView={setView}
+              setPlannerFrom={setPlannerFrom}
+              setPlannerTo={setPlannerTo}
+              setChatInput={chat.setChatInput}
+              routes={reports.routes}
+            />
+          )}
           {view === 'map' && (
             <MapView
               mapLoaded={map.mapLoaded}
