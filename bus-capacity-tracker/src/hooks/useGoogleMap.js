@@ -32,6 +32,9 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
   const [feedLive, setFeedLive] = useState(true);
   const [vehicleSource, setVehicleSource] = useState('mock');
   const [vehicles, setVehicles] = useState([]); // latest fetched positions (for the detail panel count)
+  // Routes with no bus predicting an upcoming stop (deadheads/none) — joined key, same value-stable
+  // pattern as selectedKey, so the route-draw effect only re-fires when the set actually changes.
+  const [outOfServiceKey, setOutOfServiceKey] = useState('');
   const [highlightedStops, setHighlightStops] = useState([]); // stop ids the agent asked to emphasize
   const [locateError, setLocateError] = useState('');
 
@@ -153,6 +156,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
 
       const sel = selectedKey ? selectedKey.split('|') : [];
       const codes = sel.length === 0 ? routes.map((r) => r.code) : sel;
+      const outSet = new Set(outOfServiceKey ? outOfServiceKey.split('|') : []);
       const bounds = new window.google.maps.LatLngBounds();
       const highlightBounds = new window.google.maps.LatLngBounds();
       const highlightSet = new Set(highlightedStops);
@@ -163,7 +167,8 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
         const detail = await detailFor(code);
         if (cancelled || !detail) continue;
         const color = colorFor(code);
-        const downRoute = isDown(code); // dim routes reported down (secondary cue; panel carries the text)
+        // Dim routes reported down or not in service (secondary cue; the panel carries the text).
+        const downRoute = isDown(code) || outSet.has(code);
 
         for (const pattern of detail.patterns) {
           const path = window.google.maps.geometry.encoding.decodePath(pattern.encodedPolyline);
@@ -243,7 +248,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
       cancelled = true;
       drawn.forEach((o) => o.setMap(null));
     };
-  }, [mapLoaded, routes, selectedKey, view, colorFor, nameFor, crowdingHtml, isDown, highlightedStops]);
+  }, [mapLoaded, routes, selectedKey, outOfServiceKey, view, colorFor, nameFor, crowdingHtml, isDown, highlightedStops]);
 
   // 4) Poll ALL vehicles on a fixed cadence while on the map view. Selection filtering happens in
   //    the draw effect below, so chip toggles re-filter instantly and never reset the poll timer,
@@ -258,7 +263,16 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
         .catch(() => null);
       if (cancelled || !d) return;
       if (d.source) setVehicleSource(d.source);
-      setVehicles(Array.isArray(d.vehicles) ? d.vehicles : []);
+      const list = Array.isArray(d.vehicles) ? d.vehicles : [];
+      setVehicles(list);
+      const predicting = new Set(list.filter((v) => v.nextStops?.length > 0).map((v) => v.route));
+      setOutOfServiceKey(
+        routes
+          .map((r) => r.code)
+          .filter((c) => !predicting.has(c))
+          .sort()
+          .join('|'),
+      );
     };
 
     poll();
@@ -302,7 +316,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
           const late = v.delayed ? '<div style="color:var(--warn);font-weight:600;margin-top:3px">Running late</div>' : '';
           const next = v.nextStops?.length
             ? `<div style="font-size:12px;color:#666;margin-top:4px">Next: ${v.nextStops[0].name} ${v.nextStops[0].etaMin === 0 ? 'now' : `~${v.nextStops[0].etaMin} min`}</div>`
-            : '';
+            : '<div style="font-size:12px;color:#666;margin-top:4px">Not in passenger service</div>';
           infoWindowRef.current.setContent(
             `<div style="padding:6px 8px;font-family:system-ui,sans-serif;min-width:150px;line-height:1.45">
                <strong>${nameFor(v.route)}</strong> <span style="color:#888">(${v.route})</span>

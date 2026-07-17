@@ -53,11 +53,18 @@ function getLiveBuses(input: { route?: unknown }) {
       delayed: v.delayed ?? null,
     })),
   );
+  const outOfService = codes.filter((c) => !feed.routeInService(c));
   return {
     source,
     count: buses.length,
     buses,
-    note: source === 'mock' ? 'Positions are simulated (demo mode), not live service.' : undefined,
+    outOfService: outOfService.length ? outOfService : undefined,
+    note:
+      source === 'mock'
+        ? 'Positions are simulated (demo mode), not live service.'
+        : outOfService.length
+          ? 'Routes in outOfService have no buses in passenger service right now — tracked vehicles may be deadheading; treat them as not running.'
+          : undefined,
   };
 }
 
@@ -116,6 +123,11 @@ function checkDownBuses() {
   return {
     confirmedDown: down.filter((d) => d.confirmed).map(label),
     unconfirmedReports: down.filter((d) => !d.confirmed).map(label),
+    // Distinct from rider-reported down: these routes simply have no buses in passenger service.
+    notInService: feed
+      .getRoutes()
+      .map((r) => r.code)
+      .filter((c) => !feed.routeInService(c)),
     note:
       feed.vehicleSource() === 'mock'
         ? 'Vehicle positions are simulated (demo mode), so I can’t cross-check live presence right now.'

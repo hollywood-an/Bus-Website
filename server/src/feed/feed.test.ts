@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseRoutes, parseRouteDetail, parseVehicles } from './parse';
 import * as cache from './cache';
-import { getVehicles, vehicleSource } from './vehicles';
+import { getVehicles, vehicleSource, routeInService } from './vehicles';
 
 describe('parse (defensive coercion of an untrusted feed)', () => {
   it('parseRoutes upper-cases codes and drops junk', () => {
@@ -123,6 +123,11 @@ describe('mock vehicles (default source)', () => {
     expect(Number.isFinite(v[0]!.latitude)).toBe(true);
     expect(Number.isFinite(v[0]!.longitude)).toBe(true);
     expect(v[0]!.heading).toBeGreaterThanOrEqual(0);
+  });
+
+  it('routeInService follows whether any bus predicts an upcoming stop', () => {
+    expect(routeInService('CC')).toBe(true); // mock buses always predict
+    expect(routeInService('ZZZ')).toBe(false); // unknown route -> no vehicles -> not in service
   });
 
   it('synthesizes nextStops from real stop names with plausible ETAs', () => {
