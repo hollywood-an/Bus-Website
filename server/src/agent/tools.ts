@@ -57,7 +57,7 @@ function getLiveBuses(input: { route?: unknown }) {
     source,
     count: buses.length,
     buses,
-    note: source === 'mock' ? 'Positions are simulated — no buses run during summer break.' : undefined,
+    note: source === 'mock' ? 'Positions are simulated (demo mode), not live service.' : undefined,
   };
 }
 
@@ -118,7 +118,7 @@ function checkDownBuses() {
     unconfirmedReports: down.filter((d) => !d.confirmed).map(label),
     note:
       feed.vehicleSource() === 'mock'
-        ? 'Vehicle positions are simulated, so I can’t cross-check live presence right now.'
+        ? 'Vehicle positions are simulated (demo mode), so I can’t cross-check live presence right now.'
         : undefined,
   };
 }

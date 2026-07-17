@@ -191,7 +191,7 @@ function BusNextStops({ vehicle }) {
       <div className="text-[12px] font-bold text-ink">Bus{vehicle.destination ? ` to ${vehicle.destination}` : ''}</div>
       {vehicle.nextStops?.length > 0 && (
         <ul className="mt-1 space-y-0.5">
-          {vehicle.nextStops.map((s, i) => (
+          {vehicle.nextStops.slice(0, 3).map((s, i) => (
             <li key={s.id ?? i} className="flex items-baseline justify-between gap-2 text-[12px] text-ink-soft">
               <span className="min-w-0 truncate">{s.name}</span>
               <span className="shrink-0 font-mono text-[11px] text-muted">{s.etaMin === 0 ? 'Due' : `${s.etaMin} min`}</span>
