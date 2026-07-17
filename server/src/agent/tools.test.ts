@@ -129,6 +129,19 @@ describe('UI-control tools (drive the app, emit ui_directive)', () => {
     expect(d!.args).toHaveProperty('from');
     expect(d!.args).toHaveProperty('to');
     expect(d!.args).toHaveProperty('walk');
+    const geoBus = (d!.args as { bus: Record<string, unknown> | null }).bus;
+    if (geoBus) {
+      // The map needs the walk-leg paths; turn-by-turn steps stay out of the SSE payload.
+      expect(geoBus).toHaveProperty('walkToBoardPolyline');
+      expect(geoBus).toHaveProperty('walkFromAlightPolyline');
+      expect(geoBus).not.toHaveProperty('walkToBoardSteps');
+    }
+    // The model-visible summary carries no geometry (token guard; _geometry is stripped by the loop).
+    if (r.bus) {
+      expect(r.bus).not.toHaveProperty('routePolyline');
+      expect(r.bus).not.toHaveProperty('walkToBoardPolyline');
+      expect(r.bus).not.toHaveProperty('walkToBoardSteps');
+    }
     // an unresolved trip produces no directive
     expect(directiveFor('plan_route', await dispatchTool('plan_route', { from: 'Narnia', to: 'rpac' }))).toBeNull();
   });

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Footprints, Bus, Zap, Navigation, ArrowUp, CornerUpLeft, CornerUpRight } from 'lucide-react';
 import TripMap from './TripMap';
 import RouteChip from './RouteChip';
+import { tripGeometry } from '../lib/tripGeometry';
 
 // meters -> imperial, the way a US transit app shows it (feet under ~0.1 mi, else miles).
 function fmtDist(m) {
@@ -18,9 +19,9 @@ function maneuverIcon(maneuver = '') {
 }
 
 // Google-Maps-style turn-by-turn list (walk + scooter share the road path).
-function StepList({ steps }) {
+function StepList({ steps, className = 'max-h-72' }) {
   return (
-    <ol className="mt-2 max-h-72 divide-y divide-line overflow-y-auto pr-1">
+    <ol className={`mt-2 ${className} divide-y divide-line overflow-y-auto pr-1`}>
       {steps.map((s, i) => {
         const Icon = maneuverIcon(s.maneuver);
         return (
@@ -65,6 +66,7 @@ function BusItinerary({ trip }) {
           Walk <span className="font-mono">{b.walkToBoardMin} min</span> ({fmtDist(b.walkToBoardMeters)}) to{' '}
           <strong className="text-ink">{b.board.name}</strong>
         </span>
+        {b.walkToBoardSteps?.length > 0 && <StepList steps={b.walkToBoardSteps} className="max-h-48" />}
       </TimelineRow>
       <TimelineRow marker={dot} connector={color}>
         <div className="flex flex-wrap items-center gap-1.5 font-bold text-ink">
@@ -83,6 +85,7 @@ function BusItinerary({ trip }) {
           Walk <span className="font-mono">{b.walkFromAlightMin} min</span> ({fmtDist(b.walkFromAlightMeters)}) to{' '}
           <strong className="text-ink">{trip.to.name}</strong>
         </span>
+        {b.walkFromAlightSteps?.length > 0 && <StepList steps={b.walkFromAlightSteps} className="max-h-48" />}
       </TimelineRow>
     </ol>
   );
@@ -124,25 +127,7 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
     if (e.key === 'Enter') plan();
   };
 
-  const geometry = trip
-    ? {
-        from: trip.from,
-        to: trip.to,
-        fastest: trip.fastest,
-        walk: { encodedPolyline: trip.walkPolyline, min: trip.walkMin },
-        scooter: { min: trip.scooterMin },
-        bus: trip.bus
-          ? {
-              routeColor: trip.bus.routeColor,
-              routeName: trip.bus.routeName,
-              routePolyline: trip.bus.routePolyline,
-              board: trip.bus.board,
-              alight: trip.bus.alight,
-              min: trip.bus.totalMin,
-            }
-          : null,
-      }
-    : null;
+  const geometry = tripGeometry(trip);
 
   const inputClass = 'w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm font-semibold text-ink placeholder:font-normal placeholder:text-muted focus:border-scarlet focus:outline-none';
 

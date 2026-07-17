@@ -3,6 +3,7 @@ import { Navigation, Bot, Map, Megaphone, Gauge, Footprints, Bus, Zap, ArrowRigh
 import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
 import TripMap from './TripMap';
+import { tripGeometry } from '../lib/tripGeometry';
 
 // The landing / how-to page (default view). Visual-forward: it shows the features instead of describing
 // them. The Assistant preview embeds the real, interactive TripMap (live data, clickable mode switcher),
@@ -68,25 +69,7 @@ export default function HomeView({ setView, setPlannerFrom, setPlannerTo, setCha
     };
   }, []);
 
-  const geometry = trip
-    ? {
-        from: trip.from,
-        to: trip.to,
-        fastest: trip.fastest,
-        walk: { encodedPolyline: trip.walkPolyline, min: trip.walkMin },
-        scooter: { min: trip.scooterMin },
-        bus: trip.bus
-          ? {
-              routeColor: trip.bus.routeColor,
-              routeName: trip.bus.routeName,
-              routePolyline: trip.bus.routePolyline,
-              board: trip.bus.board,
-              alight: trip.bus.alight,
-              min: trip.bus.totalMin,
-            }
-          : null,
-      }
-    : null;
+  const geometry = tripGeometry(trip);
 
   const goAssistant = (q) => {
     setChatInput(q);

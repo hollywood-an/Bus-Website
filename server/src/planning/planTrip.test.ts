@@ -20,6 +20,26 @@ describe('planTrip', () => {
     }
   });
 
+  it('carries walk-leg geometry on the bus option (offline fallbacks with no key)', async () => {
+    const r = await planTrip('the union', 'rpac');
+    expect('error' in r).toBe(false);
+    if ('error' in r) return;
+    expect(r.bus).toBeTruthy();
+    if (!r.bus) return;
+    expect(r.bus.walkToBoardPolyline).toBe('');
+    expect(r.bus.walkToBoardSteps).toEqual([]);
+    expect(r.bus.walkFromAlightPolyline).toBe('');
+    expect(r.bus.walkFromAlightSteps).toEqual([]);
+    expect(r.bus.board.id).not.toBe(r.bus.alight.id);
+    expect(r.bus.totalMin).toBe(r.bus.walkToBoardMin + r.bus.busMin + r.bus.walkFromAlightMin);
+  });
+
+  it('returns identical plans for identical queries', async () => {
+    const r1 = await planTrip('the union', 'rpac');
+    const r2 = await planTrip('the union', 'rpac');
+    expect(r2).toEqual(r1);
+  });
+
   it('flags an unresolved origin', async () => {
     const r = await planTrip('somewhere imaginary zzz', 'rpac');
     expect(r).toMatchObject({ error: 'unresolved_from' });

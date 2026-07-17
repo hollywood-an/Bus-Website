@@ -1,18 +1,28 @@
 import { geocode, type Place } from '../geo/geocode';
-import { walkPath, type WalkStep } from '../geo/directions';
+import { walkPath, coordKey, type WalkStep, type WalkPath } from '../geo/directions';
 import { haversineMeters } from '../geo/util';
 import { sliceRiddenPath, joinPolylines } from '../geo/polyline';
 import * as feed from '../feed';
-import type { Stop } from '../feed';
+import type { Stop, RouteSummary, RouteDetail } from '../feed';
 
 // The multi-modal trip planner shared by the agent tool (plan_route) and GET /api/plan. Geocodes
-// both endpoints, then for each live route finds the stop nearest the origin (board) and nearest the
-// destination (alight), and picks the route minimizing walk-to-board + bus + walk-from-alight. This
-// is the "walk to another building's stop, take the bus" behavior — for ANY pair, not a fixed table.
+// both endpoints, then picks the route + (board, alight) stop pair minimizing REAL walking time
+// (Google Routes API) plus the estimated ride. Straight-line distance only prunes candidates; it
+// never decides. This is the "walk to another building's stop, take the bus" behavior — for ANY
+// pair, not a fixed table.
 const WALK_MPS = 1.35; // ~4.9 km/h
 const SCOOTER_MPS = 4.2; // ~15 km/h
 const BUS_MPS = 4.5; // ~16 km/h including stops
 const DWELL_S = 15; // dwell per intermediate stop
+
+// Path-aware selection budget. Worst case ≈ 2 × (CANDIDATES_PER_END + survivor count) uncached
+// Routes API calls per never-seen origin/destination pair; the coord-pair cache in walkPath
+// collapses repeats and stops shared across routes.
+const CANDIDATES_PER_END = 4; // global top-K stops per endpoint sent to the Routes API
+// Phase A prune is a heuristic, not a strict bound: straight-line walks underestimate real ones,
+// so a route this much worse than the best estimate (times DETOUR, plus SLACK minutes) can't win.
+const PRUNE_DETOUR = 1.5;
+const PRUNE_SLACK_MIN = 3;
 
 export interface BusOption {
   routeCode: string;
@@ -28,6 +38,10 @@ export interface BusOption {
   walkFromAlightMin: number;
   walkFromAlightMeters: number;
   totalMin: number;
+  walkToBoardPolyline: string; // '' → client draws a straight dashed segment
+  walkToBoardSteps: WalkStep[]; // turn-by-turn; [] when Routes/key is unavailable
+  walkFromAlightPolyline: string;
+  walkFromAlightSteps: WalkStep[];
 }
 
 export interface TripPlan {
@@ -50,24 +64,13 @@ export async function planTrip(fromQuery: string, toQuery: string): Promise<Trip
   const to = await geocode(toQuery);
   if (!to) return { error: 'unresolved_to', query: toQuery };
 
-  const walk = await walkPath({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng });
+  // The direct walk and the bus option (which fetches its own walk legs) are independent.
+  const [walk, bus] = await Promise.all([
+    walkPath({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }),
+    bestBusOption(from, to),
+  ]);
   const walkMin = Math.max(1, Math.round(walk.seconds / 60));
   const scooterMin = Math.max(1, Math.round(walk.meters / SCOOTER_MPS / 60));
-
-  const bus = bestBusOption(from, to);
-  // For the chosen route, fetch the real walking paths to/from the stops (accurate time + distance for
-  // the itinerary). Only two calls, only for the winner, cached by coord-pair.
-  if (bus) {
-    const [toBoard, fromAlight] = await Promise.all([
-      walkPath({ lat: from.lat, lng: from.lng }, { lat: bus.board.lat, lng: bus.board.lng }),
-      walkPath({ lat: bus.alight.lat, lng: bus.alight.lng }, { lat: to.lat, lng: to.lng }),
-    ]);
-    bus.walkToBoardMin = Math.max(1, Math.round(toBoard.seconds / 60));
-    bus.walkToBoardMeters = Math.round(toBoard.meters);
-    bus.walkFromAlightMin = Math.max(1, Math.round(fromAlight.seconds / 60));
-    bus.walkFromAlightMeters = Math.round(fromAlight.meters);
-    bus.totalMin = bus.walkToBoardMin + bus.busMin + bus.walkFromAlightMin;
-  }
 
   const fastest = pickFastest(walkMin, scooterMin, bus?.totalMin);
 
@@ -84,57 +87,148 @@ export async function planTrip(fromQuery: string, toQuery: string): Promise<Trip
   };
 }
 
-function bestBusOption(from: Place, to: Place): BusOption | null {
-  let best: BusOption | null = null;
-  let bestRaw = Infinity;
+type Near = { idx: number; stop: Stop; meters: number };
+type ScoredRoute = { route: RouteSummary; detail: RouteDetail; board: Near; alight: Near; estMin: number };
+type Candidate = { stop: Stop; idx: number; wp: WalkPath };
 
+// Path-aware selection in four phases: (A) score every route with free straight-line estimates and
+// drop the hopeless ones; (B) build a small candidate-stop set per endpoint; (C) fetch real walking
+// paths for just those candidates, concurrently; (D) pick the (board, alight) pair minimizing real
+// walk seconds + estimated ride. With no Google key, walkPath falls back to straight-line instantly,
+// so selection degrades to the old heuristic and stays deterministic offline.
+async function bestBusOption(from: Place, to: Place): Promise<BusOption | null> {
+  // Phase A — straight-line estimate per route: walks to the nearest stops plus the ride between
+  // them (no ride term when one stop is nearest to both ends; Phase D still evaluates real pairs).
+  const scored: ScoredRoute[] = [];
   for (const route of feed.getRoutes()) {
     const detail = feed.getRouteDetail(route.code);
     if (!detail || detail.stops.length < 2) continue;
 
     const board = nearestStop(detail.stops, from.lat, from.lng);
     const alight = nearestStop(detail.stops, to.lat, to.lng);
-    if (!board || !alight || board.idx === alight.idx) continue;
+    if (!board || !alight) continue;
 
-    const walkToBoardRaw = board.meters / WALK_MPS / 60;
-    const walkFromAlightRaw = alight.meters / WALK_MPS / 60;
-    const { meters: busMeters, intermediate } = alongRoute(detail.stops, board.idx, alight.idx);
-    const busRaw = busMeters / BUS_MPS / 60 + (intermediate * DWELL_S) / 60;
-    const totalRaw = walkToBoardRaw + busRaw + walkFromAlightRaw;
+    let estMin = (board.meters + alight.meters) / WALK_MPS / 60;
+    if (board.idx !== alight.idx) {
+      const { meters, intermediate } = alongRoute(detail.stops, board.idx, alight.idx);
+      estMin += meters / BUS_MPS / 60 + (intermediate * DWELL_S) / 60;
+    }
+    scored.push({ route, detail, board, alight, estMin });
+  }
+  if (scored.length === 0) return null;
 
-    if (totalRaw < bestRaw) {
-      bestRaw = totalRaw;
-      const walkToBoardMin = Math.max(1, Math.round(walkToBoardRaw));
-      const busMin = Math.max(1, Math.round(busRaw));
-      const walkFromAlightMin = Math.max(1, Math.round(walkFromAlightRaw));
-      // Join ALL patterns (e.g. outbound + inbound halves) into the full route path before slicing;
-      // a single pattern is only part of a loop, so the board stop may not lie on it.
-      const fullPolyline = joinPolylines(detail.patterns.map((p) => p.encodedPolyline).filter(Boolean));
-      const boardPt = { lat: board.stop.latitude, lng: board.stop.longitude };
-      const alightPt = { lat: alight.stop.latitude, lng: alight.stop.longitude };
-      best = {
-        routeCode: route.code,
-        routeName: route.name,
-        routeColor: route.color,
-        // Just the segment the rider is actually on; busMeters disambiguates which arc of a loop.
-        routePolyline: fullPolyline ? sliceRiddenPath(fullPolyline, boardPt, alightPt, busMeters) : '',
-        board: { name: board.stop.name, ...boardPt, id: board.stop.id },
-        alight: { name: alight.stop.name, ...alightPt, id: alight.stop.id },
-        stops: intermediate,
-        walkToBoardMin,
-        walkToBoardMeters: Math.round(board.meters),
-        busMin,
-        walkFromAlightMin,
-        walkFromAlightMeters: Math.round(alight.meters),
-        totalMin: walkToBoardMin + busMin + walkFromAlightMin,
-      };
+  const bestEst = Math.min(...scored.map((s) => s.estMin));
+  const survivors = scored.filter((s) => s.estMin <= bestEst * PRUNE_DETOUR + PRUNE_SLACK_MIN);
+
+  // Phase B — candidate stops per endpoint: the global top-K nearest across survivors, plus each
+  // survivor's own nearest stop so every survivor stays evaluable. Deduped on the walkPath cache
+  // key, so one physical stop shared by several routes costs at most one API call.
+  const originCands = candidateStops(survivors, (s) => s.board, from.lat, from.lng);
+  const destCands = candidateStops(survivors, (s) => s.alight, to.lat, to.lng);
+
+  // Phase C — fetch all candidate walk legs concurrently. Destination legs run stop → destination,
+  // never reversed: one-way paths differ and the turn-by-turn steps would read backwards.
+  const fromWalks = new Map<string, WalkPath>();
+  const toWalks = new Map<string, WalkPath>();
+  await Promise.all([
+    ...[...originCands].map(async ([key, pt]) => {
+      fromWalks.set(key, await walkPath({ lat: from.lat, lng: from.lng }, pt));
+    }),
+    ...[...destCands].map(async ([key, pt]) => {
+      toWalks.set(key, await walkPath(pt, { lat: to.lat, lng: to.lng }));
+    }),
+  ]);
+
+  // Phase D — evaluate (board, alight) pairs per survivor by raw seconds; round only for display.
+  let best: { s: ScoredRoute; b: Candidate; a: Candidate; busMeters: number; intermediate: number; busSeconds: number; totalSeconds: number } | null = null;
+  for (const s of survivors) {
+    const boards = withWalks(s.detail.stops, fromWalks);
+    const alights = withWalks(s.detail.stops, toWalks);
+    for (const b of boards) {
+      for (const a of alights) {
+        if (b.idx === a.idx) continue;
+        const { meters: busMeters, intermediate } = alongRoute(s.detail.stops, b.idx, a.idx);
+        const busSeconds = busMeters / BUS_MPS + intermediate * DWELL_S;
+        const totalSeconds = b.wp.seconds + busSeconds + a.wp.seconds;
+        if (!best || totalSeconds < best.totalSeconds) {
+          best = { s, b, a, busMeters, intermediate, busSeconds, totalSeconds };
+        }
+      }
     }
   }
-  return best;
+  if (!best) return null;
+
+  const { s, b, a } = best;
+  const walkToBoardMin = Math.max(1, Math.round(b.wp.seconds / 60));
+  const busMin = Math.max(1, Math.round(best.busSeconds / 60));
+  const walkFromAlightMin = Math.max(1, Math.round(a.wp.seconds / 60));
+  // Join ALL patterns (e.g. outbound + inbound halves) into the full route path before slicing;
+  // a single pattern is only part of a loop, so the board stop may not lie on it.
+  const fullPolyline = joinPolylines(s.detail.patterns.map((p) => p.encodedPolyline).filter(Boolean));
+  const boardPt = { lat: b.stop.latitude, lng: b.stop.longitude };
+  const alightPt = { lat: a.stop.latitude, lng: a.stop.longitude };
+  return {
+    routeCode: s.route.code,
+    routeName: s.route.name,
+    routeColor: s.route.color,
+    // Just the segment the rider is actually on; busMeters disambiguates which arc of a loop.
+    routePolyline: fullPolyline ? sliceRiddenPath(fullPolyline, boardPt, alightPt, best.busMeters) : '',
+    board: { name: b.stop.name, ...boardPt, id: b.stop.id },
+    alight: { name: a.stop.name, ...alightPt, id: a.stop.id },
+    stops: best.intermediate,
+    walkToBoardMin,
+    walkToBoardMeters: Math.round(b.wp.meters),
+    busMin,
+    walkFromAlightMin,
+    walkFromAlightMeters: Math.round(a.wp.meters),
+    totalMin: walkToBoardMin + busMin + walkFromAlightMin,
+    walkToBoardPolyline: b.wp.encodedPolyline,
+    walkToBoardSteps: b.wp.steps,
+    walkFromAlightPolyline: a.wp.encodedPolyline,
+    walkFromAlightSteps: a.wp.steps,
+  };
 }
 
-function nearestStop(stops: Stop[], lat: number, lng: number): { idx: number; stop: Stop; meters: number } | null {
-  let best: { idx: number; stop: Stop; meters: number } | null = null;
+// The global top-K stops nearest the endpoint across all survivors, unioned with each survivor's
+// own nearest stop. Keys are walkPath cache keys (coordKey), values the point to route to.
+function candidateStops(
+  survivors: ScoredRoute[],
+  nearestOf: (s: ScoredRoute) => Near,
+  lat: number,
+  lng: number,
+): Map<string, { lat: number; lng: number }> {
+  const byKey = new Map<string, { pt: { lat: number; lng: number }; meters: number }>();
+  for (const s of survivors) {
+    for (const stop of s.detail.stops) {
+      const key = coordKey(stop.latitude, stop.longitude);
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          pt: { lat: stop.latitude, lng: stop.longitude },
+          meters: haversineMeters(lat, lng, stop.latitude, stop.longitude),
+        });
+      }
+    }
+  }
+  const picked = new Map<string, { lat: number; lng: number }>();
+  const nearestFirst = [...byKey.entries()].sort((x, y) => x[1].meters - y[1].meters);
+  for (const [key, v] of nearestFirst.slice(0, CANDIDATES_PER_END)) picked.set(key, v.pt);
+  for (const s of survivors) {
+    const near = nearestOf(s);
+    const key = coordKey(near.stop.latitude, near.stop.longitude);
+    if (!picked.has(key)) picked.set(key, { lat: near.stop.latitude, lng: near.stop.longitude });
+  }
+  return picked;
+}
+
+// A route's stops that made the candidate cut, with their fetched walk legs attached.
+function withWalks(stops: Stop[], walks: Map<string, WalkPath>): Candidate[] {
+  return stops
+    .map((stop, idx) => ({ stop, idx, wp: walks.get(coordKey(stop.latitude, stop.longitude)) }))
+    .filter((c): c is Candidate => c.wp !== undefined);
+}
+
+function nearestStop(stops: Stop[], lat: number, lng: number): Near | null {
+  let best: Near | null = null;
   stops.forEach((stop, idx) => {
     const meters = haversineMeters(lat, lng, stop.latitude, stop.longitude);
     if (!best || meters < best.meters) best = { idx, stop, meters };
