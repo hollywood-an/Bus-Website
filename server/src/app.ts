@@ -156,8 +156,16 @@ export function normalizeMessages(input: unknown): ChatMessage[] {
     if (!m || typeof m.content !== 'string') continue;
     const content = m.content.slice(0, MAX_MSG_CHARS);
     if (!content.trim()) continue;
-    out.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content });
+    const role = m.role === 'assistant' ? 'assistant' : 'user';
+    const prev = out[out.length - 1];
+    // The client splits one reply into several bubbles (text · trip map · text); the API wants
+    // alternating roles, so consecutive same-role messages collapse into one.
+    if (prev && prev.role === role) prev.content = `${prev.content}\n\n${content}`.slice(0, MAX_MSG_CHARS);
+    else out.push({ role, content });
   }
-  while (out.length && out[0]!.role !== 'user') out.shift(); // Anthropic requires a leading user turn
-  return out.slice(-MAX_HISTORY);
+  // Trim to budget FIRST, then drop any leading assistant turn the cut exposed — the other order
+  // could hand the API a history starting mid-exchange.
+  const recent = out.slice(-MAX_HISTORY);
+  while (recent.length && recent[0]!.role !== 'user') recent.shift(); // Anthropic requires a leading user turn
+  return recent;
 }
