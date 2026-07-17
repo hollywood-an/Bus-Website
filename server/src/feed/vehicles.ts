@@ -15,6 +15,13 @@ export function getVehicles(code: string): Vehicle[] {
   return USE_MOCK ? mockVehicles(code) : cache.getCachedVehicles(code);
 }
 
+// In passenger service = at least one bus predicts an upcoming stop. End-of-service vehicles
+// linger in the feed with no predictions ("Last Pick Up" deadheads), so bus count alone can't be
+// trusted. Mock buses always predict, so demo mode is always in service.
+export function routeInService(code: string): boolean {
+  return getVehicles(code).some((v) => (v.nextStops?.length ?? 0) > 0);
+}
+
 // Mock buses modeled on the real schema, positioned by interpolating along the route's real stop
 // coordinates on a time-based loop, so they actually move between polls. Deterministic from the
 // clock (no RNG) so repeated reads within a tick agree.

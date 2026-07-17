@@ -177,10 +177,18 @@ export default function MapView({
   );
 }
 
-// Shared running/down status for the detail panel and compact cards.
-function statusFor(down) {
-  if (!down) return { label: 'Running', color: 'var(--ok)' };
-  return down.confirmed ? { label: 'Reported down', color: 'var(--danger)' } : { label: 'Possibly down', color: 'var(--warn)' };
+// Shared running/down status for the detail panel and compact cards. Rider down-reports win;
+// otherwise a route with no bus predicting an upcoming stop is asleep, not "Running".
+function statusFor(down, inService = true) {
+  if (down) return down.confirmed ? { label: 'Reported down', color: 'var(--danger)' } : { label: 'Possibly down', color: 'var(--warn)' };
+  if (!inService) return { label: 'Not in service', color: 'var(--muted)' };
+  return { label: 'Running', color: 'var(--ok)' };
+}
+
+// Mirrors the server's routeInService: end-of-service vehicles linger in the live feed with no
+// predicted stops ("Last Pick Up" deadheads), so bus count alone can't be trusted.
+function anyInService(routeVehicles) {
+  return routeVehicles.some((v) => v.nextStops?.length > 0);
 }
 
 // One bus's destination + its next (up to 3) stops with ETAs. nextStops is real feed data when
@@ -204,7 +212,9 @@ function BusNextStops({ vehicle }) {
 }
 
 function RouteDetail({ route, cap, down, routeVehicles = [], vehicleSource, stopCount, setView }) {
-  const status = statusFor(down);
+  const inService = anyInService(routeVehicles);
+  const activeBuses = routeVehicles.filter((v) => v.nextStops?.length > 0);
+  const status = statusFor(down, inService);
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -236,7 +246,9 @@ function RouteDetail({ route, cap, down, routeVehicles = [], vehicleSource, stop
         <div>
           <div className="text-[11px] font-bold uppercase tracking-wide text-muted">Buses now</div>
           <div className="mt-0.5 font-mono text-lg font-bold text-ink">{routeVehicles.length}</div>
-          <div className="text-[11px] text-muted">{vehicleSource === 'live' ? 'live' : 'simulated'}</div>
+          <div className="text-[11px] text-muted">
+            {vehicleSource !== 'live' ? 'simulated' : inService ? 'live' : 'tracked, not in service'}
+          </div>
         </div>
         <div>
           <div className="text-[11px] font-bold uppercase tracking-wide text-muted">Stops</div>
@@ -247,14 +259,16 @@ function RouteDetail({ route, cap, down, routeVehicles = [], vehicleSource, stop
 
       <div>
         <div className="text-[11px] font-bold uppercase tracking-wide text-muted">Next stops per bus</div>
-        {routeVehicles.length ? (
+        {activeBuses.length ? (
           <div className="mt-1.5 space-y-2">
-            {routeVehicles.map((v, i) => (
+            {activeBuses.map((v, i) => (
               <BusNextStops key={v.id ?? i} vehicle={v} />
             ))}
           </div>
         ) : (
-          <div className="mt-1 text-sm text-muted">No buses on this route right now.</div>
+          <div className="mt-1 text-sm text-muted">
+            {routeVehicles.length ? 'Buses are tracked but not in passenger service.' : 'No buses on this route right now.'}
+          </div>
         )}
       </div>
 
@@ -274,7 +288,9 @@ function RouteDetail({ route, cap, down, routeVehicles = [], vehicleSource, stop
 // Compact per-route card for the multi-select comparison panel: status, crowding, and each bus's
 // next stops — no stop count or report button (the single-route detail carries those).
 function CompactRouteCard({ route, cap, down, routeVehicles = [], vehicleSource }) {
-  const status = statusFor(down);
+  const inService = anyInService(routeVehicles);
+  const activeBuses = routeVehicles.filter((v) => v.nextStops?.length > 0);
+  const status = statusFor(down, inService);
   return (
     <div className="rounded-lg border border-line bg-surface p-3">
       <div className="flex items-center justify-between gap-2">
@@ -298,12 +314,13 @@ function CompactRouteCard({ route, cap, down, routeVehicles = [], vehicleSource 
       </div>
 
       <div className="mt-2 font-mono text-[11px] text-muted">
-        {routeVehicles.length} bus{routeVehicles.length !== 1 ? 'es' : ''} · {vehicleSource === 'live' ? 'live' : 'simulated'}
+        {routeVehicles.length} bus{routeVehicles.length !== 1 ? 'es' : ''} ·{' '}
+        {vehicleSource !== 'live' ? 'simulated' : inService ? 'live' : 'tracked, not in service'}
       </div>
 
-      {routeVehicles.length > 0 && (
+      {activeBuses.length > 0 && (
         <div className="mt-2 space-y-2">
-          {routeVehicles.map((v, i) => (
+          {activeBuses.map((v, i) => (
             <BusNextStops key={v.id ?? i} vehicle={v} />
           ))}
         </div>
