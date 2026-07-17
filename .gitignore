@@ -8,3 +8,4 @@ dist/
 # Claude Code / Cursor skill installs and worktrees (machine-local tooling)
 .claude/
 .cursor/
+.impeccable/
