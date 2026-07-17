@@ -168,6 +168,9 @@ async function planRoute(input: { from?: unknown; to?: unknown }) {
             routeName: bus.routeName,
             routeColor: bus.routeColor,
             routePolyline: bus.routePolyline,
+            // Real walking paths for the access legs (map only — steps stay out of the SSE payload).
+            walkToBoardPolyline: bus.walkToBoardPolyline,
+            walkFromAlightPolyline: bus.walkFromAlightPolyline,
             board: bus.board,
             alight: bus.alight,
             min: bus.totalMin,

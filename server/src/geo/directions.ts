@@ -22,11 +22,14 @@ export interface WalkPath {
 
 const cache = new Map<string, WalkPath>();
 const round5 = (n: number) => Math.round(n * 1e5) / 1e5;
+// Shared coord key: planTrip dedupes candidate stops with the SAME rounding as this cache, so one
+// physical stop shared by several routes costs at most one Routes API call.
+export const coordKey = (lat: number, lng: number) => `${round5(lat)},${round5(lng)}`;
 // Routes API duration is a string like "165s".
 const parseSeconds = (d?: string): number => (d ? parseInt(d, 10) || 0 : 0);
 
 export async function walkPath(a: LatLng, b: LatLng): Promise<WalkPath> {
-  const cacheKey = `${round5(a.lat)},${round5(a.lng)}|${round5(b.lat)},${round5(b.lng)}`;
+  const cacheKey = `${coordKey(a.lat, a.lng)}|${coordKey(b.lat, b.lng)}`;
   const hit = cache.get(cacheKey);
   if (hit) return hit;
 
