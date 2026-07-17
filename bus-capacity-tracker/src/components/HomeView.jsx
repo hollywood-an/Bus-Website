@@ -188,7 +188,7 @@ export default function HomeView({ setView, setPlannerFrom, setPlannerTo, setCha
           </div>
           <div className="mt-2.5">
             {geometry ? (
-              <TripMap geometry={geometry} heightClass="h-[300px] sm:h-[360px]" />
+              <TripMap geometry={geometry} defaultMode="bus" heightClass="h-[300px] sm:h-[360px]" />
             ) : (
               <div className="grid h-[300px] w-full place-items-center rounded-lg border border-line bg-surface">
                 <div className="h-7 w-7 animate-spin rounded-full border-2 border-line border-t-scarlet" />
