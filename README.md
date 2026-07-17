@@ -116,6 +116,10 @@ threat model, including where each control stops, is in [`SECURITY.md`](./SECURI
   The populated live-vehicle schema is assumed from the feed docs and unverified until fall service.
 - **Crowdsourcing is anonymous and gameable.** See the report-poisoning section of `SECURITY.md`.
 - **Points are cosmetic.** They are local, non-authoritative, and exist to keep reports fresh. No accounts.
+- **Bus stop choice costs Google Routes calls.** Board/alight stops are picked by real walking time
+  (straight-line pruning first, then ~10–20 `computeRoutes` calls worst case per never-seen
+  origin/destination pair, cached in-process per coord pair). With no Google key it degrades to
+  straight-line estimates and straight dashed walk legs on the map.
 - **Persistence is SQLite.** Fine locally and for a single instance; a hosted KV or a volume is a
   deploy-time upgrade. Bus times are estimates (along-route distance plus dwell), not the official ETA.
 

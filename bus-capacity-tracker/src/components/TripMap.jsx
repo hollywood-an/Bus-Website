@@ -74,8 +74,15 @@ export default function TripMap({ geometry, mode: modeProp, onModeChange, height
           const board = { lat: geometry.bus.board.lat, lng: geometry.bus.board.lng };
           const alight = { lat: geometry.bus.alight.lat, lng: geometry.bus.alight.lng };
           const dash = { icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '10px' };
-          keep(new maps.Polyline({ path: [a, board], map, strokeOpacity: 0, icons: [dash] }));
-          keep(new maps.Polyline({ path: [alight, b], map, strokeOpacity: 0, icons: [dash] }));
+          // Walk legs follow the real path when the server has one; '' (no key / old payloads)
+          // falls back to a straight segment. Bounds must include the detours or they clip.
+          const dashedWalk = (encoded, fallbackPath) => {
+            const path = encoded ? maps.geometry.encoding.decodePath(encoded) : fallbackPath;
+            keep(new maps.Polyline({ path, map, strokeOpacity: 0, icons: [dash] }));
+            path.forEach((p) => bounds.extend(p));
+          };
+          dashedWalk(geometry.bus.walkToBoardPolyline, [a, board]);
+          dashedWalk(geometry.bus.walkFromAlightPolyline, [alight, b]);
           keep(
             new maps.Marker({
               position: board,
