@@ -48,6 +48,40 @@ describe('parse (defensive coercion of an untrusted feed)', () => {
     expect(v).toHaveLength(1);
     expect(v[0]).toMatchObject({ route: 'CC', latitude: 40, heading: 90, delayed: true, destination: 'RPAC' });
   });
+
+  it('parseVehicles keeps the 3 soonest valid predictions as nextStops', () => {
+    const v = parseVehicles('cc', {
+      data: {
+        vehicles: [
+          {
+            latitude: 40,
+            longitude: -83,
+            predictions: [
+              { stopName: 'Mount Hall Loop', timeToArrivalInSeconds: 420, type: 'departure' },
+              { stopId: '24', stopName: 'St. John Arena (Westbound)', timeToArrivalInSeconds: 0 },
+              { stopName: 'Fifth', timeToArrivalInSeconds: 600 },
+              { stopName: 'Midwest Campus', timeToArrivalInSeconds: 180 },
+              { timeToArrivalInSeconds: 300 }, // no name -> dropped
+              { stopName: 'Bad', timeToArrivalInSeconds: 'x' }, // junk seconds -> dropped
+            ],
+          },
+        ],
+      },
+    });
+    expect(v[0]!.nextStops).toEqual([
+      { id: '24', name: 'St. John Arena (Westbound)', etaMin: 0 },
+      { id: undefined, name: 'Midwest Campus', etaMin: 3 },
+      { id: undefined, name: 'Mount Hall Loop', etaMin: 7 },
+    ]);
+  });
+
+  it('parseVehicles leaves nextStops undefined for missing or junk predictions', () => {
+    const v = parseVehicles('cc', {
+      data: { vehicles: [{ latitude: 40, longitude: -83 }, { latitude: 41, longitude: -83, predictions: 'junk' }] },
+    });
+    expect(v[0]!.nextStops).toBeUndefined();
+    expect(v[1]!.nextStops).toBeUndefined();
+  });
 });
 
 describe('cache fixture fallback (poller never ran)', () => {
@@ -88,5 +122,18 @@ describe('mock vehicles (default source)', () => {
     expect(Number.isFinite(v[0]!.latitude)).toBe(true);
     expect(Number.isFinite(v[0]!.longitude)).toBe(true);
     expect(v[0]!.heading).toBeGreaterThanOrEqual(0);
+  });
+
+  it('synthesizes nextStops from real stop names with plausible ETAs', () => {
+    const stopNames = new Set(cache.getRouteDetail('CC')!.stops.map((s) => s.name));
+    for (const v of getVehicles('CC')) {
+      if (!v.nextStops) continue; // a bus at the very end of the loop legitimately has none
+      expect(v.nextStops.length).toBeGreaterThanOrEqual(1);
+      expect(v.nextStops.length).toBeLessThanOrEqual(3);
+      for (const s of v.nextStops) {
+        expect(stopNames.has(s.name)).toBe(true);
+        expect(s.etaMin).toBeGreaterThanOrEqual(1);
+      }
+    }
   });
 });

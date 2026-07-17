@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { MapPinOff, LocateFixed, Navigation2, AlertTriangle } from 'lucide-react';
 import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
-import { CAPACITY_LEVELS } from '../data/capacity';
 import { timeAgo } from '../lib/format';
 
 // Map-forward, now with a detail panel: route lines + stops + buses on the left, and crowding / status /
@@ -12,8 +11,8 @@ export default function MapView({
   mapError,
   routesError,
   routes,
-  selectedBusRoute,
-  setSelectedBusRoute,
+  selectedRoutes = [],
+  setSelectedRoutes,
   feedLive,
   vehicleSource,
   vehicles = [],
@@ -28,17 +27,21 @@ export default function MapView({
 
   const capByCode = new Map(capacity.map((c) => [c.route, c]));
   const downByCode = new Map(down.map((d) => [d.route, d]));
-  const selected = selectedBusRoute !== 'all' ? routes.find((r) => r.code === selectedBusRoute) : null;
+  // Selection in click order drives the panel's card order; `single` gates the full detail view.
+  const selectedRouteObjs = selectedRoutes.map((c) => routes.find((r) => r.code === c)).filter(Boolean);
+  const single = selectedRoutes.length === 1 ? selectedRoutes[0] : null;
+  const toggleRoute = (code) =>
+    setSelectedRoutes((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
 
-  // Stop count for the selected route (server-cached; cheap).
+  // Stop count for a single selected route (server-cached; cheap).
   useEffect(() => {
-    if (selectedBusRoute === 'all') {
+    if (!single) {
       setStopCount(null);
       return;
     }
     let cancelled = false;
     setStopCount(null);
-    fetch(`/api/routes/${selectedBusRoute}`)
+    fetch(`/api/routes/${single}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!cancelled && d && Array.isArray(d.stops)) setStopCount(d.stops.length);
@@ -47,7 +50,7 @@ export default function MapView({
     return () => {
       cancelled = true;
     };
-  }, [selectedBusRoute]);
+  }, [single]);
 
   return (
     <section>
@@ -68,38 +71,34 @@ export default function MapView({
         </div>
       )}
 
-      {/* Route filter chips, each with a crowding / down dot. */}
+      {/* Route filter chips: multi-select toggles, each with its route-identity color dot.
+          (Crowding/down status lives in the panel, popups, and the Check view.) */}
       <div className="mb-3 flex flex-wrap gap-1.5">
         <button
-          onClick={() => setSelectedBusRoute('all')}
+          onClick={() => setSelectedRoutes([])}
+          aria-pressed={selectedRoutes.length === 0}
           className="rounded-full px-3 py-2 text-xs font-bold transition-colors"
-          style={selectedBusRoute === 'all' ? { backgroundColor: 'var(--ink)', color: '#fff' } : { backgroundColor: 'var(--surface-2)', color: 'var(--ink-soft)' }}
+          style={selectedRoutes.length === 0 ? { backgroundColor: 'var(--ink)', color: '#fff' } : { backgroundColor: 'var(--surface-2)', color: 'var(--ink-soft)' }}
         >
           All
         </button>
         {routes.map((r) => {
-          const active = selectedBusRoute === r.code;
-          const cap = capByCode.get(r.code);
-          const dn = downByCode.get(r.code);
-          const dotColor = dn?.confirmed ? 'var(--danger)' : cap ? `var(--cap-${cap.level})` : null;
-          const dotTitle = dn?.confirmed ? 'reported down' : cap ? CAPACITY_LEVELS[cap.level]?.label : '';
+          const active = selectedRoutes.includes(r.code);
           return (
             <button
               key={r.code}
-              onClick={() => setSelectedBusRoute(r.code)}
+              onClick={() => toggleRoute(r.code)}
               title={r.name}
+              aria-pressed={active}
               className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide transition-colors"
               style={active ? { backgroundColor: r.color, color: '#fff' } : { backgroundColor: 'var(--surface-2)', color: 'var(--ink-soft)' }}
             >
               {r.code}
-              {dotColor && (
-                <span
-                  aria-label={dotTitle}
-                  title={dotTitle}
-                  className="h-2 w-2 rounded-full ring-1 ring-white/70"
-                  style={{ backgroundColor: dotColor }}
-                />
-              )}
+              <span
+                aria-hidden
+                className="h-2 w-2 rounded-full ring-1 ring-white/80"
+                style={{ backgroundColor: active ? '#ffffff' : r.color }}
+              />
             </button>
           );
         })}
@@ -138,20 +137,34 @@ export default function MapView({
           )}
         </div>
 
-        {/* Detail panel (right on desktop, below on mobile) */}
+        {/* Detail panel (right on desktop, below on mobile): legend for All, full detail for one
+            route, a compact card per route when comparing several. */}
         <aside className="mt-3 rounded-xl border border-line bg-surface p-4 md:mt-0 md:w-80 md:shrink-0 md:overflow-y-auto">
-          {selected ? (
+          {selectedRouteObjs.length === 0 && <Legend down={down} nameForCode={nameForCode} />}
+          {selectedRouteObjs.length === 1 && (
             <RouteDetail
-              route={selected}
-              cap={capByCode.get(selected.code)}
-              down={downByCode.get(selected.code)}
-              liveCount={vehicles.filter((v) => v.route === selected.code).length}
+              route={selectedRouteObjs[0]}
+              cap={capByCode.get(selectedRouteObjs[0].code)}
+              down={downByCode.get(selectedRouteObjs[0].code)}
+              routeVehicles={vehicles.filter((v) => v.route === selectedRouteObjs[0].code)}
               vehicleSource={vehicleSource}
               stopCount={stopCount}
               setView={setView}
             />
-          ) : (
-            <Legend down={down} nameForCode={nameForCode} />
+          )}
+          {selectedRouteObjs.length >= 2 && (
+            <div className="space-y-3">
+              {selectedRouteObjs.map((r) => (
+                <CompactRouteCard
+                  key={r.code}
+                  route={r}
+                  cap={capByCode.get(r.code)}
+                  down={downByCode.get(r.code)}
+                  routeVehicles={vehicles.filter((v) => v.route === r.code)}
+                  vehicleSource={vehicleSource}
+                />
+              ))}
+            </div>
           )}
         </aside>
       </div>
@@ -164,8 +177,34 @@ export default function MapView({
   );
 }
 
-function RouteDetail({ route, cap, down, liveCount, vehicleSource, stopCount, setView }) {
-  const status = down ? (down.confirmed ? { label: 'Reported down', color: 'var(--danger)' } : { label: 'Possibly down', color: 'var(--warn)' }) : { label: 'Running', color: 'var(--ok)' };
+// Shared running/down status for the detail panel and compact cards.
+function statusFor(down) {
+  if (!down) return { label: 'Running', color: 'var(--ok)' };
+  return down.confirmed ? { label: 'Reported down', color: 'var(--danger)' } : { label: 'Possibly down', color: 'var(--warn)' };
+}
+
+// One bus's destination + its next (up to 3) stops with ETAs. nextStops is real feed data when
+// live, synthesized from the motion model when simulated; absent -> destination only.
+function BusNextStops({ vehicle }) {
+  return (
+    <div className="rounded-lg border border-line bg-surface-2/60 px-2.5 py-2">
+      <div className="text-[12px] font-bold text-ink">Bus{vehicle.destination ? ` to ${vehicle.destination}` : ''}</div>
+      {vehicle.nextStops?.length > 0 && (
+        <ul className="mt-1 space-y-0.5">
+          {vehicle.nextStops.map((s, i) => (
+            <li key={s.id ?? i} className="flex items-baseline justify-between gap-2 text-[12px] text-ink-soft">
+              <span className="min-w-0 truncate">{s.name}</span>
+              <span className="shrink-0 font-mono text-[11px] text-muted">{s.etaMin === 0 ? 'Due' : `${s.etaMin} min`}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function RouteDetail({ route, cap, down, routeVehicles = [], vehicleSource, stopCount, setView }) {
+  const status = statusFor(down);
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -196,7 +235,7 @@ function RouteDetail({ route, cap, down, liveCount, vehicleSource, stopCount, se
       <div className="grid grid-cols-2 gap-3">
         <div>
           <div className="text-[11px] font-bold uppercase tracking-wide text-muted">Buses now</div>
-          <div className="mt-0.5 font-mono text-lg font-bold text-ink">{liveCount}</div>
+          <div className="mt-0.5 font-mono text-lg font-bold text-ink">{routeVehicles.length}</div>
           <div className="text-[11px] text-muted">{vehicleSource === 'live' ? 'live' : 'simulated'}</div>
         </div>
         <div>
@@ -204,6 +243,19 @@ function RouteDetail({ route, cap, down, liveCount, vehicleSource, stopCount, se
           <div className="mt-0.5 font-mono text-lg font-bold text-ink">{stopCount ?? '—'}</div>
           <div className="text-[11px] text-muted">on this route</div>
         </div>
+      </div>
+
+      <div>
+        <div className="text-[11px] font-bold uppercase tracking-wide text-muted">Next stops per bus</div>
+        {routeVehicles.length ? (
+          <div className="mt-1.5 space-y-2">
+            {routeVehicles.map((v, i) => (
+              <BusNextStops key={v.id ?? i} vehicle={v} />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-1 text-sm text-muted">No buses on this route right now.</div>
+        )}
       </div>
 
       {setView && (
@@ -215,6 +267,47 @@ function RouteDetail({ route, cap, down, liveCount, vehicleSource, stopCount, se
         </button>
       )}
       <p className="text-[12px] text-muted">Tap a stop for the next arrival, or a bus for where it&apos;s headed.</p>
+    </div>
+  );
+}
+
+// Compact per-route card for the multi-select comparison panel: status, crowding, and each bus's
+// next stops — no stop count or report button (the single-route detail carries those).
+function CompactRouteCard({ route, cap, down, routeVehicles = [], vehicleSource }) {
+  const status = statusFor(down);
+  return (
+    <div className="rounded-lg border border-line bg-surface p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <RouteChip code={route.code} color={route.color} />
+          <span className="truncate text-sm font-bold text-ink">{route.name}</span>
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold" style={{ color: status.color }}>
+          {down && <AlertTriangle size={12} />}
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.color }} />
+          {status.label}
+        </span>
+      </div>
+
+      <div className="mt-2">
+        {cap ? (
+          <CapacityMeter level={cap.level} confident={cap.confident} />
+        ) : (
+          <div className="text-[12px] text-muted">No recent reports.</div>
+        )}
+      </div>
+
+      <div className="mt-2 font-mono text-[11px] text-muted">
+        {routeVehicles.length} bus{routeVehicles.length !== 1 ? 'es' : ''} · {vehicleSource === 'live' ? 'live' : 'simulated'}
+      </div>
+
+      {routeVehicles.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {routeVehicles.map((v, i) => (
+            <BusNextStops key={v.id ?? i} vehicle={v} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -260,7 +353,7 @@ function Legend({ down, nameForCode }) {
         )}
       </div>
 
-      <p className="text-[12px] text-muted">Tap a route above to see its crowding, status, and live buses.</p>
+      <p className="text-[12px] text-muted">Tap routes above to compare — pick several to see them side by side.</p>
     </div>
   );
 }
