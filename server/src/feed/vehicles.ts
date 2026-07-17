@@ -1,10 +1,10 @@
 import type { Vehicle, VehicleSource } from './types';
 import * as cache from './cache';
 
-// The single seam every consumer goes through. USE_MOCK_VEHICLES decides the source; flipping it to
-// false in the fall switches to the real feed with NO other code change. Default is mock, because
-// the live `vehicles` array is empty over summer break.
-const USE_MOCK = (process.env.USE_MOCK_VEHICLES ?? 'true').toLowerCase() !== 'false';
+// The single seam every consumer goes through. Default is the REAL feed (schema verified 2026-07);
+// USE_MOCK_VEHICLES=true is an explicit demo mode that simulates buses when no service is running.
+// Off-hours an empty live map is the truth, not a bug.
+const USE_MOCK = (process.env.USE_MOCK_VEHICLES ?? 'false').toLowerCase() === 'true';
 const MOCK_PERIOD_MS = Number(process.env.MOCK_PERIOD_MS ?? 360_000); // time to traverse a route's stops
 
 export function vehicleSource(): VehicleSource {

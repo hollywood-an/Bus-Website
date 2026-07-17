@@ -1,10 +1,25 @@
 import { getRoutes, getRouteDetail } from './cache';
 import { getVehicles, vehicleSource } from './vehicles';
 import { haversineMeters } from '../geo/util';
+import type { Stop, Vehicle } from './types';
 
-// Rough next-arrival estimate at a named stop, from current bus positions (straight-line, ~5 m/s). It is
-// NOT schedule-based. Shared by the get_next_arrival agent tool and GET /api/arrivals so both stay in sync.
+// Next-arrival estimate at a named stop. Prefers the REAL per-stop ETAs the live feed attaches to
+// each vehicle (nextStops, from its `predictions`); falls back to a rough straight-line estimate
+// (~5 m/s) when no bus predicts that stop. Shared by the get_next_arrival agent tool and
+// GET /api/arrivals so both stay in sync.
 const VEHICLE_MPS = 5;
+
+// Soonest feed-predicted ETA for a stop across the given vehicles (stop-id match first, exact
+// name as fallback), or null when no vehicle predicts it. Exported for unit tests.
+export function predictedEtaMin(vehicles: Vehicle[], stop: Stop): number | null {
+  const nameLower = stop.name.toLowerCase();
+  let best: number | null = null;
+  for (const v of vehicles) {
+    const p = v.nextStops?.find((s) => (s.id && s.id === stop.id) || s.name.toLowerCase() === nameLower);
+    if (p && (best === null || p.etaMin < best)) best = p.etaMin;
+  }
+  return best;
+}
 
 export interface ArrivalEstimate {
   route: string;
@@ -34,21 +49,28 @@ export function estimateArrivals(stopInput: unknown, routeInput?: unknown): Arri
   const routeFilter = knownCode(routeInput);
   const codes = routeFilter ? [routeFilter] : getRoutes().map((r) => r.code);
 
-  // Find the stop (by name match) on each candidate route, then estimate from the nearest vehicle.
+  // Find the stop (by name match) on each candidate route, then take the real predicted ETA if any
+  // bus reports one, else estimate from the nearest vehicle.
   const estimates: ArrivalEstimate[] = [];
+  let anyPredicted = false;
   for (const code of codes) {
     const detail = getRouteDetail(code);
     const stop = detail?.stops.find((s) => s.name.toLowerCase().includes(stopQuery));
     if (!stop) continue;
-    let best: { etaMin: number; meters: number } | null = null;
-    for (const v of getVehicles(code)) {
+    const vehicles = getVehicles(code);
+    let nearest: { etaMin: number; meters: number } | null = null;
+    for (const v of vehicles) {
       const meters = haversineMeters(v.latitude, v.longitude, stop.latitude, stop.longitude);
       const etaMin = Math.max(1, Math.round(meters / VEHICLE_MPS / 60));
-      if (!best || meters < best.meters) best = { etaMin, meters: Math.round(meters) };
+      if (!nearest || meters < nearest.meters) nearest = { etaMin, meters: Math.round(meters) };
     }
-    if (best) estimates.push({ route: code, stop: stop.name, ...best });
+    if (!nearest) continue;
+    const predicted = predictedEtaMin(vehicles, stop);
+    if (predicted !== null) anyPredicted = true;
+    estimates.push({ route: code, stop: stop.name, etaMin: predicted ?? nearest.etaMin, meters: nearest.meters });
   }
   estimates.sort((a, b) => a.etaMin - b.etaMin);
+  const live = anyPredicted && source === 'live';
   return {
     stopQuery,
     source,
@@ -56,6 +78,8 @@ export function estimateArrivals(stopInput: unknown, routeInput?: unknown): Arri
     note:
       estimates.length === 0
         ? 'No matching stop with a bus nearby (or no buses running).'
-        : 'ETAs are rough straight-line estimates' + (source === 'mock' ? ' from simulated positions.' : '.'),
+        : live
+          ? 'Live ETAs from the bus feed.'
+          : 'ETAs are rough straight-line estimates' + (source === 'mock' ? ' from simulated positions.' : '.'),
   };
 }

@@ -76,7 +76,8 @@ export function parseVehicles(code: string, raw: unknown): Vehicle[] {
 }
 
 // The live feed's per-vehicle `predictions` carry real ETAs per upcoming stop (both 'arrival' and
-// 'departure' entries are genuine visits). Keep the three soonest; garbage in → undefined out.
+// 'departure' entries are genuine visits). Keep ALL valid ones — arrivals.ts matches arbitrary
+// stops against them; the UI caps its own display. Garbage in → undefined out.
 function parseNextStops(raw: unknown): Vehicle['nextStops'] {
   if (!Array.isArray(raw)) return undefined;
   const stops = raw
@@ -90,7 +91,6 @@ function parseNextStops(raw: unknown): Vehicle['nextStops'] {
     })
     .filter((s) => s.name && Number.isFinite(s.seconds) && s.seconds >= 0)
     .sort((a, b) => a.seconds - b.seconds) // the feed looks ordered, but don't trust it
-    .slice(0, 3)
     .map((s) => ({ id: s.id, name: s.name, etaMin: Math.round(s.seconds / 60) }));
   return stops.length ? stops : undefined;
 }
