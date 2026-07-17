@@ -25,6 +25,7 @@ describe('dispatchTool (read tools)', () => {
     expect(r.source).toBe('mock');
     expect(r.count).toBeGreaterThanOrEqual(1);
     expect(r.buses[0].route).toBe('CC');
+    expect(r.outOfService).toBeUndefined(); // mock buses always predict stops
   });
 
   it('get_capacity returns seeded routes with labels + confidence', async () => {
@@ -44,6 +45,7 @@ describe('dispatchTool (read tools)', () => {
     const r: any = await dispatchTool('check_down_buses', {});
     expect(Array.isArray(r.confirmedDown)).toBe(true);
     expect(Array.isArray(r.unconfirmedReports)).toBe(true);
+    expect(r.notInService).toEqual([]); // mock mode: every route is in service
   });
 
   it('plan_route plans a trip for a geocodable pair (offline curated fallback)', async () => {

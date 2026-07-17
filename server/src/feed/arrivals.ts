@@ -57,7 +57,9 @@ export function estimateArrivals(stopInput: unknown, routeInput?: unknown): Arri
     const detail = getRouteDetail(code);
     const stop = detail?.stops.find((s) => s.name.toLowerCase().includes(stopQuery));
     if (!stop) continue;
-    const vehicles = getVehicles(code);
+    // Live deadheads (no predicted stops) are not coming back — never estimate from them.
+    const all = getVehicles(code);
+    const vehicles = source === 'live' ? all.filter((v) => v.nextStops?.length) : all;
     let nearest: { etaMin: number; meters: number } | null = null;
     for (const v of vehicles) {
       const meters = haversineMeters(v.latitude, v.longitude, stop.latitude, stop.longitude);
