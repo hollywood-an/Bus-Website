@@ -49,7 +49,7 @@ describe('parse (defensive coercion of an untrusted feed)', () => {
     expect(v[0]).toMatchObject({ route: 'CC', latitude: 40, heading: 90, delayed: true, destination: 'RPAC' });
   });
 
-  it('parseVehicles keeps the 3 soonest valid predictions as nextStops', () => {
+  it('parseVehicles keeps all valid predictions as nextStops, soonest first', () => {
     const v = parseVehicles('cc', {
       data: {
         vehicles: [
@@ -72,6 +72,7 @@ describe('parse (defensive coercion of an untrusted feed)', () => {
       { id: '24', name: 'St. John Arena (Westbound)', etaMin: 0 },
       { id: undefined, name: 'Midwest Campus', etaMin: 3 },
       { id: undefined, name: 'Mount Hall Loop', etaMin: 7 },
+      { id: undefined, name: 'Fifth', etaMin: 10 },
     ]);
   });
 

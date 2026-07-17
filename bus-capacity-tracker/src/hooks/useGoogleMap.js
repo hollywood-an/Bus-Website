@@ -220,7 +220,9 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
                 const node = document.getElementById('iw-eta');
                 if (!node) return;
                 const list = (d.estimates || []).slice(0, 3);
-                node.textContent = list.length ? `Next: ${list.map((e) => `${e.route} ~${e.etaMin} min`).join(', ')}` : 'No buses nearby right now';
+                node.textContent = list.length
+                  ? `Next: ${list.map((e) => `${e.route} ${e.etaMin === 0 ? 'due' : `~${e.etaMin} min`}`).join(', ')}`
+                  : 'No buses nearby right now';
               })
               .catch(() => {});
           });

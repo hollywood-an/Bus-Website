@@ -239,9 +239,9 @@ export default function HomeView({ setView, setPlannerFrom, setPlannerTo, setCha
           </div>
           <div>
             <div className="flex items-center gap-1.5 text-[13px] font-bold text-ink-soft">
-              <Bus size={15} className="text-scarlet-ink" /> Live, or simulated
+              <Bus size={15} className="text-scarlet-ink" /> Live bus data
             </div>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-muted">Live during service hours, clearly labeled when simulated.</p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-muted">Real-time positions and ETAs from OSU&apos;s feed; demo mode is clearly labeled simulated.</p>
           </div>
           <div>
             <div className="flex items-center gap-1.5 text-[13px] font-bold text-ink-soft">

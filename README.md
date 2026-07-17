@@ -95,7 +95,7 @@ ANTHROPIC_API_KEY=...          # the model key, server-side only
 AGENT_MODEL=claude-haiku-4-5   # optional; any Claude model id
 GOOGLE_MAPS_SERVER_KEY=...      # Geocoding + Places + Directions (IP-restricted, not referrer)
 ALLOWED_ORIGIN=http://localhost:5173
-USE_MOCK_VEHICLES=true          # buses are simulated when the live feed is empty (e.g. summer)
+USE_MOCK_VEHICLES=false         # live by default; true = demo mode (labeled simulated buses)
 SEED_DEMO=true                  # seed plausible decaying reports on a cold start
 ```
 
@@ -111,9 +111,12 @@ threat model, including where each control stops, is in [`SECURITY.md`](./SECURI
 
 ## Honest scope
 
-- **Vehicles may be simulated.** OSU's `vehicles` feed is empty outside service hours (e.g. summer), so
-  `USE_MOCK_VEHICLES` interpolates buses along real route polylines. The UI labels this as "simulated."
-  The populated live-vehicle schema is assumed from the feed docs and unverified until fall service.
+- **Vehicles are live by default; empty can be the truth.** Positions and per-stop ETAs come from
+  OSU's real feed (schema verified against live service, July 2026); arrival times use the feed's
+  own predictions when a bus reports them and fall back to straight-line estimates otherwise.
+  Outside service hours the map honestly shows no buses — `USE_MOCK_VEHICLES=true` is an explicit
+  demo mode that interpolates labeled "simulated" buses along the real polylines. The feed's route
+  lineup also shifts (routes appear and disappear); everything is parsed defensively.
 - **Crowdsourcing is anonymous and gameable.** See the report-poisoning section of `SECURITY.md`.
 - **Points are cosmetic.** They are local, non-authoritative, and exist to keep reports fresh. No accounts.
 - **Bus stop choice costs Google Routes calls.** Board/alight stops are picked by real walking time
