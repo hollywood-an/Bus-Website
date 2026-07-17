@@ -31,9 +31,18 @@ export interface RouteDetail {
   stops: Stop[];
 }
 
-// The populated vehicle shape can't be verified until fall service hours (the live array is empty
-// over summer). Fields beyond lat/lng are optional and parsed defensively; the mock source models
-// the same shape so everything downstream is source-agnostic.
+// An upcoming stop for a bus: from the live feed's per-vehicle `predictions` (real ETAs), or
+// synthesized from the motion model in mock mode. etaMin 0 = due now.
+export interface NextStop {
+  id?: string;
+  name: string;
+  etaMin: number;
+}
+
+// Live vehicle shape verified against the real feed 2026-07: top-level id/latitude/longitude/
+// heading/speed/delayed/destination/distance plus a `predictions` array (see parse.ts). Fields
+// beyond lat/lng stay optional and defensively parsed; the mock source models the same shape so
+// everything downstream is source-agnostic.
 export interface Vehicle {
   id?: string;
   route?: string;
@@ -44,6 +53,7 @@ export interface Vehicle {
   delayed?: boolean;
   destination?: string;
   distance?: number;
+  nextStops?: NextStop[];
 }
 
 export type VehicleSource = 'live' | 'mock';

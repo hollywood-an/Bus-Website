@@ -41,10 +41,10 @@ export default function BusCapacityTracker() {
     if (!d?.action) return;
     if (d.action === 'focus_map_on_route') {
       map.setHighlightStops([]);
-      if (d.args?.route) map.setSelectedBusRoute(d.args.route);
+      if (d.args?.route) map.setSelectedRoutes([d.args.route]); // directive replaces the selection
       setView('map');
     } else if (d.action === 'highlight_stops') {
-      if (d.args?.route) map.setSelectedBusRoute(d.args.route);
+      if (d.args?.route) map.setSelectedRoutes([d.args.route]);
       map.setHighlightStops(Array.isArray(d.args?.stopIds) ? d.args.stopIds : []);
       setView('map');
     }
@@ -102,8 +102,8 @@ export default function BusCapacityTracker() {
               mapError={map.mapError}
               routesError={map.routesError}
               routes={map.routes}
-              selectedBusRoute={map.selectedBusRoute}
-              setSelectedBusRoute={map.setSelectedBusRoute}
+              selectedRoutes={map.selectedRoutes}
+              setSelectedRoutes={map.setSelectedRoutes}
               feedLive={map.feedLive}
               vehicleSource={map.vehicleSource}
               vehicles={map.vehicles}

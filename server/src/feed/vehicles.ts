@@ -26,6 +26,9 @@ function mockVehicles(code: string): Vehicle[] {
   const count = Math.min(3, Math.max(1, Math.round(stops.length / 7)));
   const now = Date.now();
   const out: Vehicle[] = [];
+  // Time to travel one stop-to-stop segment — exactly how fast the mock bus moves, so the
+  // synthesized next-stop ETAs match what the marker will actually do.
+  const segMs = MOCK_PERIOD_MS / (stops.length - 1);
 
   for (let i = 0; i < count; i++) {
     const phase = ((now / MOCK_PERIOD_MS) + i / count) % 1;
@@ -34,6 +37,11 @@ function mockVehicles(code: string): Vehicle[] {
     const frac = pos - idx;
     const a = stops[idx]!;
     const b = stops[Math.min(idx + 1, stops.length - 1)]!;
+    const nextStops = [];
+    for (let k = 1; k <= 3 && idx + k <= stops.length - 1; k++) {
+      const s = stops[idx + k]!;
+      nextStops.push({ id: s.id, name: s.name, etaMin: Math.max(1, Math.round(((k - frac) * segMs) / 60_000)) });
+    }
     out.push({
       id: `mock-${code.toUpperCase()}-${i + 1}`,
       route: code.toUpperCase(),
@@ -44,6 +52,7 @@ function mockVehicles(code: string): Vehicle[] {
       delayed: false,
       destination: b.name,
       distance: 0,
+      nextStops: nextStops.length ? nextStops : undefined,
     });
   }
   return out;
