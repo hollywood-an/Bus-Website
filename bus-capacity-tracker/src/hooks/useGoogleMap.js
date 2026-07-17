@@ -28,7 +28,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
   const [mapError, setMapError] = useState(false); // Maps JS failed to load (bad/missing key, offline)
   const [routesError, setRoutesError] = useState(false); // /api/routes unreachable
   const [routes, setRoutes] = useState([]); // [{ code, name, color, darkColor }]
-  const [selectedBusRoute, setSelectedBusRoute] = useState('all');
+  const [selectedRoutes, setSelectedRoutesState] = useState([]); // route codes; [] = show all
   const [feedLive, setFeedLive] = useState(true);
   const [vehicleSource, setVehicleSource] = useState('mock');
   const [vehicles, setVehicles] = useState([]); // latest fetched positions (for the detail panel count)
@@ -51,6 +51,19 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
   useEffect(() => {
     downRef.current = down;
   }, [down]);
+
+  // Normalizing setter: accepts an array or an updater fn, uppercases + dedupes, and returns the
+  // previous array when nothing changed so repeated agent directives don't re-fire the map effects.
+  const setSelectedRoutes = useCallback((next) => {
+    setSelectedRoutesState((prev) => {
+      const arr = typeof next === 'function' ? next(prev) : next;
+      const norm = [...new Set((arr || []).map((c) => String(c).toUpperCase()))];
+      return norm.length === prev.length && norm.every((c, i) => c === prev[i]) ? prev : norm;
+    });
+  }, []);
+  // Value-stable key for effect deps; effects re-derive the array from it so redraws track the
+  // selection's VALUE, not the array's identity.
+  const selectedKey = selectedRoutes.join('|');
 
   const colorFor = useCallback((code) => routes.find((r) => r.code === code)?.color || '#64748b', [routes]);
   const nameFor = useCallback((code) => routes.find((r) => r.code === code)?.name || code, [routes]);
@@ -113,6 +126,13 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
 
     const map = mapRef.current;
     let cancelled = false;
+    // This run's overlays, removed on cleanup so a superseded async run can't strand anything on
+    // the map when chips are toggled rapidly.
+    const drawn = [];
+    const keep = (o) => {
+      drawn.push(o);
+      routeOverlaysRef.current.push(o);
+    };
 
     (async () => {
       const detailFor = async (code) => {
@@ -131,12 +151,13 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
       routeOverlaysRef.current.forEach((o) => o.setMap(null));
       routeOverlaysRef.current = [];
 
-      const codes = selectedBusRoute === 'all' ? routes.map((r) => r.code) : [selectedBusRoute];
+      const sel = selectedKey ? selectedKey.split('|') : [];
+      const codes = sel.length === 0 ? routes.map((r) => r.code) : sel;
       const bounds = new window.google.maps.LatLngBounds();
       const highlightBounds = new window.google.maps.LatLngBounds();
       const highlightSet = new Set(highlightedStops);
-      const weight = selectedBusRoute === 'all' ? 3 : 5;
-      const opacity = selectedBusRoute === 'all' ? 0.7 : 0.9;
+      const weight = sel.length === 0 ? 3 : 5;
+      const opacity = sel.length === 0 ? 0.7 : 0.9;
 
       for (const code of codes) {
         const detail = await detailFor(code);
@@ -154,7 +175,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
             strokeWeight: downRoute ? 2 : weight,
             map,
           });
-          routeOverlaysRef.current.push(line);
+          keep(line);
           path.forEach((pt) => bounds.extend(pt));
         }
 
@@ -191,7 +212,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
                </div>`,
             );
             infoWindowRef.current.open(map, marker);
-            const q = `/api/arrivals?stop=${encodeURIComponent(stop.name)}${selectedBusRoute !== 'all' ? `&route=${code}` : ''}`;
+            const q = `/api/arrivals?stop=${encodeURIComponent(stop.name)}${sel.length > 0 ? `&route=${code}` : ''}`;
             fetch(q)
               .then((r) => r.json())
               .then((d) => {
@@ -203,7 +224,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
               })
               .catch(() => {});
           });
-          routeOverlaysRef.current.push(marker);
+          keep(marker);
           bounds.extend(position);
           if (isHighlighted) highlightBounds.extend(position);
         }
@@ -218,28 +239,45 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
 
     return () => {
       cancelled = true;
+      drawn.forEach((o) => o.setMap(null));
     };
-  }, [mapLoaded, routes, selectedBusRoute, view, colorFor, nameFor, crowdingHtml, isDown, highlightedStops]);
+  }, [mapLoaded, routes, selectedKey, view, colorFor, nameFor, crowdingHtml, isDown, highlightedStops]);
 
-  // 4) Poll vehicles and redraw their markers while on the map view.
+  // 4) Poll ALL vehicles on a fixed cadence while on the map view. Selection filtering happens in
+  //    the draw effect below, so chip toggles re-filter instantly and never reset the poll timer,
+  //    and `vehicles` always holds every bus for the detail panel's per-route counts/lists.
   useEffect(() => {
     if (view !== 'map' || !mapLoaded || routes.length === 0) return;
     let cancelled = false;
 
-    const drawVehicles = async () => {
-      if (!mapRef.current) return;
-      const url = selectedBusRoute === 'all' ? '/api/vehicles' : `/api/vehicles?route=${selectedBusRoute}`;
-      const d = await fetch(url)
+    const poll = async () => {
+      const d = await fetch('/api/vehicles')
         .then((r) => r.json())
         .catch(() => null);
       if (cancelled || !d) return;
       if (d.source) setVehicleSource(d.source);
       setVehicles(Array.isArray(d.vehicles) ? d.vehicles : []);
+    };
 
-      vehicleMarkersRef.current.forEach((m) => m.setMap(null));
-      vehicleMarkersRef.current = [];
+    poll();
+    const id = setInterval(poll, VEHICLE_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [mapLoaded, routes, view]);
 
-      (d.vehicles || []).forEach((v) => {
+  // 4b) Redraw vehicle markers whenever positions or the selection change (pure state -> map).
+  useEffect(() => {
+    if (view !== 'map' || !mapLoaded || !mapRef.current || !window.google) return;
+    const sel = selectedKey ? selectedKey.split('|') : [];
+
+    vehicleMarkersRef.current.forEach((m) => m.setMap(null));
+    vehicleMarkersRef.current = [];
+
+    vehicles
+      .filter((v) => sel.length === 0 || sel.includes(v.route))
+      .forEach((v) => {
         const marker = new window.google.maps.Marker({
           position: { lat: v.latitude, lng: v.longitude },
           map: mapRef.current,
@@ -260,11 +298,15 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
           ++popupTokenRef.current;
           const dest = v.destination ? ` to ${v.destination}` : '';
           const late = v.delayed ? '<div style="color:var(--warn);font-weight:600;margin-top:3px">Running late</div>' : '';
+          const next = v.nextStops?.length
+            ? `<div style="font-size:12px;color:#666;margin-top:4px">Next: ${v.nextStops[0].name} ${v.nextStops[0].etaMin === 0 ? 'now' : `~${v.nextStops[0].etaMin} min`}</div>`
+            : '';
           infoWindowRef.current.setContent(
             `<div style="padding:6px 8px;font-family:system-ui,sans-serif;min-width:150px;line-height:1.45">
                <strong>${nameFor(v.route)}</strong> <span style="color:#888">(${v.route})</span>
                <div style="font-size:12px;margin-top:2px">Bus${dest}</div>
                <div style="font-size:12px;margin-top:4px">${crowdingHtml(v.route)}</div>
+               ${next}
                ${late}
              </div>`,
           );
@@ -272,15 +314,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
         });
         vehicleMarkersRef.current.push(marker);
       });
-    };
-
-    drawVehicles();
-    const id = setInterval(drawVehicles, VEHICLE_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [mapLoaded, routes, selectedBusRoute, view, colorFor, nameFor, crowdingHtml]);
+  }, [vehicles, selectedKey, mapLoaded, view, colorFor, nameFor, crowdingHtml]);
 
   // 5) Tear down the map instance when leaving the map view (its DOM node unmounts), so re-entry
   //    rebuilds against a fresh #google-map element.
@@ -355,8 +389,8 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
     mapError,
     routesError,
     routes,
-    selectedBusRoute,
-    setSelectedBusRoute,
+    selectedRoutes,
+    setSelectedRoutes,
     feedLive,
     vehicleSource,
     vehicles,
