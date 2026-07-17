@@ -44,6 +44,31 @@ describe('normalizeMessages', () => {
     expect(out[0]).toEqual({ role: 'user', content: 'm8' });
   });
 
+  it('merges consecutive same-role turns (the client splits replies around trip maps)', () => {
+    expect(
+      normalizeMessages([
+        { role: 'user', content: 'take me to rpac' },
+        { role: 'assistant', content: 'Let me grab those directions.' },
+        { role: 'assistant', content: 'Scooter wins at 5 min.' },
+        { role: 'user', content: 'thanks' },
+      ]),
+    ).toEqual([
+      { role: 'user', content: 'take me to rpac' },
+      { role: 'assistant', content: 'Let me grab those directions.\n\nScooter wins at 5 min.' },
+      { role: 'user', content: 'thanks' },
+    ]);
+  });
+
+  it('drops a leading assistant turn exposed by the history cut', () => {
+    const many = Array.from({ length: 21 }, (_, i) => ({
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      content: `m${i}`,
+    }));
+    const out = normalizeMessages(many);
+    expect(out).toHaveLength(11);
+    expect(out[0]).toEqual({ role: 'user', content: 'm10' });
+  });
+
   it('returns [] for non-array input', () => {
     expect(normalizeMessages('nope')).toEqual([]);
     expect(normalizeMessages(undefined)).toEqual([]);

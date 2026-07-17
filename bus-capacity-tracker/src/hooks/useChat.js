@@ -5,6 +5,8 @@ import { ROUTE_TIMES } from '../data/routeTimes';
 import { BUS_STOPS } from '../data/busStops';
 import { streamAgent } from '../lib/agentClient';
 
+let msgSeq = 0; // uniquifies streamed-bubble ids within a session
+
 // Streams the agent's reply from the proxy. As of Phase 1.6 the client no longer sends any app
 // state: crowding/down context is read server-side from the report store, so the request carries
 // only the conversation. `generateLocalFallback` remains the offline responder (uses static route
@@ -70,23 +72,39 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
       .filter((m) => m.role === 'user' || m.role === 'assistant') // skip inline trip-map entries
       .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
 
-    let started = false;
-    const onDelta = (_chunk, accumulated) => {
-      if (!started) {
-        started = true;
-        setChatMessages((prev) => [...prev, { role: 'assistant', content: accumulated }]);
-      } else {
-        setChatMessages((prev) => {
-          const copy = prev.slice();
-          copy[copy.length - 1] = { role: 'assistant', content: accumulated };
-          return copy;
-        });
+    // Each agent turn streams into its own bubble, addressed by id — never "the last message" — so
+    // a trip map appended mid-stream is never overwritten by the next text delta. A map also closes
+    // the current bubble: the text that follows starts fresh beneath it, Google-Maps style.
+    let received = false;
+    let bubbleId = null;
+    let bubbleText = '';
+    const onDelta = (chunk) => {
+      received = true;
+      if (bubbleId === null) {
+        bubbleId = `stream-${Date.now()}-${msgSeq++}`;
+        bubbleText = '';
       }
+      bubbleText += chunk;
+      const id = bubbleId;
+      const content = bubbleText;
+      setChatMessages((prev) => {
+        const idx = prev.findIndex((m) => m.id === id);
+        if (idx === -1) return [...prev, { id, role: 'assistant', content }];
+        const copy = prev.slice();
+        copy[idx] = { ...copy[idx], content };
+        return copy;
+      });
+    };
+    const onEvent = (evt) => {
+      if (evt?.type === 'ui_directive' && evt.action === 'show_trip') {
+        bubbleId = null; // the map lands after this bubble; the next delta opens a new one
+      }
+      handleAgentEvent(evt);
     };
 
     try {
-      await streamAgent({ messages, onDelta, onEvent: handleAgentEvent });
-      if (!started) {
+      await streamAgent({ messages, onDelta, onEvent });
+      if (!received) {
         setChatMessages((prev) => [...prev, { role: 'assistant', content: generateLocalFallback(userMessage) }]);
       }
     } catch (error) {

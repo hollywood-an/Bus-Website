@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Send, Bot } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -17,6 +18,17 @@ export default function AiView({
 }) {
   const waiting = isAiThinking && chatMessages[chatMessages.length - 1]?.role !== 'assistant';
 
+  // Keep the newest message in view: always after the user's own send, and while they haven't
+  // scrolled up to read (so a streaming answer never yanks them back down mid-scroll).
+  const scrollRef = useRef(null);
+  const pinnedRef = useRef(true);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (chatMessages[chatMessages.length - 1]?.role === 'user') pinnedRef.current = true;
+    if (pinnedRef.current) el.scrollTop = el.scrollHeight;
+  }, [chatMessages, waiting, pendingConfirm]);
+
   return (
     <section className="mx-auto flex h-[calc(100vh-11rem)] max-w-2xl flex-col md:h-[calc(100vh-3rem)]">
       <div className="mb-3">
@@ -24,7 +36,14 @@ export default function AiView({
         <p className="mt-1 text-sm text-muted">Ask for a route, crowding, or what to avoid. It plans trips and drives the map.</p>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+      <div
+        ref={scrollRef}
+        onScroll={() => {
+          const el = scrollRef.current;
+          if (el) pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+        }}
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
+      >
         {chatMessages.length === 0 ? (
           <div className="grid h-full place-items-center text-center">
             <div>
