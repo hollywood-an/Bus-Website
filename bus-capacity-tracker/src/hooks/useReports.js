@@ -17,7 +17,6 @@ export function useReports() {
   const [capacity, setCapacity] = useState([]); // RouteCapacity[]
   const [down, setDown] = useState([]); // DownStatus[]
   const [userPoints, setUserPoints] = useState(0);
-  const [selectedTheme, setSelectedTheme] = useState(0);
   const [notification, setNotification] = useState('');
   const [showReward, setShowReward] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -28,9 +27,7 @@ export function useReports() {
     (async () => {
       try {
         const pts = await window.storage.get('user-points');
-        const theme = await window.storage.get('selected-theme');
         if (pts?.value) setUserPoints(parseInt(pts.value));
-        if (theme?.value) setSelectedTheme(parseInt(theme.value));
         const existing = await window.storage.get('client-id');
         if (existing?.value) {
           clientIdRef.current = existing.value;
@@ -192,22 +189,11 @@ export function useReports() {
     setTimeout(() => setNotification(''), 5000);
   };
 
-  // Preserved from the original (no theme picker is wired in the UI yet).
-  const changeTheme = async (index) => {
-    setSelectedTheme(index);
-    try {
-      await window.storage.set('selected-theme', String(index));
-    } catch {
-      /* ignore */
-    }
-  };
-
   return {
     routes,
     capacity,
     down,
     userPoints,
-    selectedTheme,
     notification,
     showReward,
     offline,
@@ -216,6 +202,5 @@ export function useReports() {
     submitCapacityReport,
     submitBusDownReport,
     checkStatus,
-    changeTheme,
   };
 }
