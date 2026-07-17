@@ -14,11 +14,15 @@ const MODE_META = {
   scooter: { label: 'Scooter', icon: Zap },
 };
 
-export default function TripMap({ geometry, mode: modeProp, onModeChange, heightClass = 'h-[480px] max-h-[60vh] min-h-[260px]' }) {
+export default function TripMap({ geometry, mode: modeProp, onModeChange, defaultMode, heightClass = 'h-[480px] max-h-[60vh] min-h-[260px]' }) {
   // `mode` can be controlled by a parent (the planner, so its directions follow the tabs) or managed
   // internally (the assistant / home preview). onModeChange fires on every tab change either way.
+  // `defaultMode` picks the starting tab when uncontrolled (falls back to fastest if the trip
+  // lacks that mode, e.g. defaultMode="bus" with no bus option).
   const controlled = modeProp !== undefined;
-  const [internalMode, setInternalMode] = useState(geometry?.fastest || 'walk');
+  const [internalMode, setInternalMode] = useState(
+    defaultMode && (defaultMode !== 'bus' || geometry?.bus) ? defaultMode : geometry?.fastest || 'walk',
+  );
   const mode = controlled ? modeProp : internalMode;
   const selectMode = (m) => {
     if (!controlled) setInternalMode(m);
@@ -32,9 +36,11 @@ export default function TripMap({ geometry, mode: modeProp, onModeChange, height
   // Reset to the fastest mode (and clear any prior load error) when a new trip comes in. A controlled
   // parent owns its own reset, so here we only touch internal state + the error flag.
   useEffect(() => {
-    if (!controlled) setInternalMode(geometry?.fastest || 'walk');
+    if (!controlled) {
+      setInternalMode(defaultMode && (defaultMode !== 'bus' || geometry?.bus) ? defaultMode : geometry?.fastest || 'walk');
+    }
     setMapError(false);
-  }, [geometry, controlled]);
+  }, [geometry, controlled, defaultMode]);
 
   const modes = ['walk', 'bus', 'scooter'].filter((m) => m !== 'bus' || geometry?.bus);
   const minFor = (m) => (m === 'walk' ? geometry?.walk?.min : m === 'scooter' ? geometry?.scooter?.min : geometry?.bus?.min);
