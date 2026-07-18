@@ -12,12 +12,16 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
   const [active, setActive] = useState(-1);
   const seqRef = useRef(0); // drops stale fetch responses
   const skipRef = useRef(false); // suppress the refetch caused by picking a suggestion
+  const focusedRef = useRef(false); // only fetch/open while the user is actually in the field
 
   useEffect(() => {
     if (skipRef.current) {
       skipRef.current = false;
       return;
     }
+    // A persisted value re-mounts with text in the field (e.g. returning to the Planner view);
+    // without focus that must not pop the dropdown.
+    if (!focusedRef.current) return;
     const q = value.trim();
     if (q.length < MIN_CHARS) {
       setItems([]);
@@ -80,8 +84,12 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
-        onBlur={() => setOpen(false)}
+        onBlur={() => {
+          focusedRef.current = false;
+          setOpen(false);
+        }}
         onFocus={() => {
+          focusedRef.current = true;
           if (items.length > 0 && value.trim().length >= MIN_CHARS) setOpen(true);
         }}
         placeholder={placeholder}
