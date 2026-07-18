@@ -52,7 +52,7 @@ const primaryBtn = 'inline-flex min-h-11 items-center justify-center gap-2 round
 const ghostBtn = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-bold text-ink-soft transition-colors hover:bg-surface-2';
 const chip = 'inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-ink-soft transition-colors hover:border-scarlet hover:text-scarlet-ink';
 
-export default function HomeView({ setView, setPlannerFrom, setPlannerTo, setChatInput, routes = [] }) {
+export default function HomeView({ setView, prefillPlanner, setChatInput, routes = [] }) {
   const [trip, setTrip] = useState(null);
 
   // Plan a real demo trip so the Assistant preview shows the actual, interactive map.
@@ -76,8 +76,7 @@ export default function HomeView({ setView, setPlannerFrom, setPlannerTo, setCha
     setView('ai');
   };
   const goPlan = (from, to) => {
-    setPlannerFrom(from);
-    setPlannerTo(to);
+    prefillPlanner(from, to); // clean slate: new endpoints, no stale results/errors
     setView('planner');
   };
   const go = (id) => setView(id);

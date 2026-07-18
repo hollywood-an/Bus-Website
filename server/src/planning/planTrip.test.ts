@@ -31,13 +31,19 @@ describe('planTrip', () => {
     expect(r.bus.walkFromAlightPolyline).toBe('');
     expect(r.bus.walkFromAlightSteps).toEqual([]);
     expect(r.bus.board.id).not.toBe(r.bus.alight.id);
-    expect(r.bus.totalMin).toBe(r.bus.walkToBoardMin + r.bus.busMin + r.bus.walkFromAlightMin);
+    expect(r.bus.waitMin).toBeGreaterThanOrEqual(0);
+    expect(r.bus.totalMin).toBe(r.bus.walkToBoardMin + r.bus.waitMin + r.bus.busMin + r.bus.walkFromAlightMin);
+    expect(r.busesInService).toBe(true); // mock buses always predict stops
   });
 
-  it('returns identical plans for identical queries', async () => {
+  it('resolves the same endpoints for identical queries', async () => {
+    // Deep equality would flake now that the wait leg tracks the (time-based) mock bus positions.
     const r1 = await planTrip('the union', 'rpac');
     const r2 = await planTrip('the union', 'rpac');
-    expect(r2).toEqual(r1);
+    if ('error' in r1 || 'error' in r2) throw new Error('unexpected planning error');
+    expect(r2.from).toEqual(r1.from);
+    expect(r2.to).toEqual(r1.to);
+    expect(Boolean(r2.bus)).toBe(Boolean(r1.bus));
   });
 
   it('flags an unresolved origin', async () => {

@@ -9,16 +9,22 @@ import type { Stop, Vehicle } from './types';
 // GET /api/arrivals so both stay in sync.
 const VEHICLE_MPS = 5;
 
-// Soonest feed-predicted ETA for a stop across the given vehicles (stop-id match first, exact
-// name as fallback), or null when no vehicle predicts it. Exported for unit tests.
-export function predictedEtaMin(vehicles: Vehicle[], stop: Stop): number | null {
+// All feed-predicted ETAs (minutes, soonest first) for a stop across the given vehicles — one per
+// bus that predicts it (stop-id match first, exact name as fallback). The planner uses the full
+// list to find the first bus a rider can actually catch after walking to the stop.
+export function predictedEtasFor(vehicles: Vehicle[], stop: Stop): number[] {
   const nameLower = stop.name.toLowerCase();
-  let best: number | null = null;
+  const etas: number[] = [];
   for (const v of vehicles) {
     const p = v.nextStops?.find((s) => (s.id && s.id === stop.id) || s.name.toLowerCase() === nameLower);
-    if (p && (best === null || p.etaMin < best)) best = p.etaMin;
+    if (p) etas.push(p.etaMin);
   }
-  return best;
+  return etas.sort((a, b) => a - b);
+}
+
+// Soonest predicted ETA, or null when no vehicle predicts the stop. Exported for unit tests.
+export function predictedEtaMin(vehicles: Vehicle[], stop: Stop): number | null {
+  return predictedEtasFor(vehicles, stop)[0] ?? null;
 }
 
 export interface ArrivalEstimate {
