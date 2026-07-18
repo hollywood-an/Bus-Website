@@ -347,19 +347,17 @@ function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded,
     const routeVehicles = vehicles.filter((v) => v.route === r.code);
     const inService = anyInService(routeVehicles);
     const dn = downByCode.get(r.code);
-    // Each bus's nextStops[0] is its soonest stop; the route's headline is the soonest across buses.
-    const next =
-      routeVehicles
-        .map((v) => v.nextStops?.[0])
-        .filter(Boolean)
-        .sort((a, b) => a.etaMin - b.etaMin)[0] ?? null;
+    // One line per in-service bus: its soonest upcoming stop (nextStops[0]), soonest bus first.
+    const busStops = routeVehicles
+      .map((v) => v.nextStops?.[0])
+      .filter(Boolean)
+      .sort((a, b) => a.etaMin - b.etaMin);
     return {
       route: r,
       dn,
       inService,
       status: statusFor(dn, inService),
-      next,
-      activeCount: routeVehicles.filter((v) => v.nextStops?.length > 0).length,
+      busStops,
       cap: capByCode.get(r.code),
     };
   });
@@ -378,7 +376,7 @@ function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded,
       </div>
 
       <ul className="-mx-1.5 space-y-0.5">
-        {rows.map(({ route, dn, inService, status, next, activeCount, cap }) => (
+        {rows.map(({ route, dn, inService, status, busStops, cap }) => (
           <li key={route.code}>
             <button
               onClick={() => onToggle(route.code)}
@@ -399,16 +397,18 @@ function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded,
                   <span className="shrink-0 text-[11px] text-muted">checking…</span>
                 )}
               </span>
-              {vehiclesLoaded && inService && next && (
-                <span className="mt-1 flex items-baseline gap-1.5 text-[12px] text-ink-soft">
-                  <span className="min-w-0 truncate">→ {next.name}</span>
-                  <span className="shrink-0 font-mono text-[11px] font-bold">{next.etaMin === 0 ? 'Due' : `${next.etaMin} min`}</span>
-                  <span className="shrink-0 text-muted">
-                    · {activeCount} bus{activeCount !== 1 ? 'es' : ''}
-                  </span>
+              {vehiclesLoaded && inService && busStops.length > 0 && (
+                <span className="mt-1 block space-y-0.5">
+                  {busStops.map((s, i) => (
+                    <span key={i} className="flex items-baseline justify-between gap-2 text-[12px] text-ink-soft">
+                      <span className="min-w-0 truncate">→ {s.name}</span>
+                      <span className="shrink-0 font-mono text-[11px] font-bold">{s.etaMin === 0 ? 'Due' : `${s.etaMin} min`}</span>
+                    </span>
+                  ))}
                   {cap && (
-                    <span className="shrink-0 font-bold" style={{ color: `var(--cap-${cap.level})` }}>
-                      · {CAPACITY_LEVELS[cap.level]?.label}
+                    <span className="block text-[11px] font-bold" style={{ color: `var(--cap-${cap.level})` }}>
+                      {CAPACITY_LEVELS[cap.level]?.label}
+                      {!cap.confident && <span className="font-normal text-muted"> (unconfirmed)</span>}
                     </span>
                   )}
                 </span>
