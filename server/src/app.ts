@@ -10,6 +10,7 @@ import { runAgentLoop, makeRunTurn } from './agent/loop';
 import { TOOL_DEFS, dispatchTool, directiveFor } from './agent/tools';
 import { validateReport } from './validateReport';
 import { planTrip } from './planning/planTrip';
+import { suggestPlaces } from './geo/suggest';
 import type { AgentRequest, ChatMessage } from './types';
 
 export const MODEL = process.env.AGENT_MODEL ?? 'claude-haiku-4-5';
@@ -81,6 +82,12 @@ const planLimiter = rateLimit({
   max: 30,
   key: (c) => c.req.header('x-client-id') || clientIp(c),
 });
+// Typeahead is debounced client-side but still chatty — allow more, keyed the same way.
+const suggestLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  key: (c) => c.req.header('x-client-id') || clientIp(c),
+});
 
 app.get('/api/reports', (c) => {
   const store = getReportStore();
@@ -114,6 +121,12 @@ app.get('/api/plan', planLimiter, async (c) => {
   if (!from.trim() || !to.trim()) return c.json({ error: 'missing_params' }, 400);
   const result = await planTrip(from, to);
   return c.json(result); // includes an `error` field if a location couldn't be resolved
+});
+
+// Planner typeahead: curated campus spots + Google Places autocomplete (display strings only).
+app.get('/api/suggest', suggestLimiter, async (c) => {
+  const suggestions = await suggestPlaces(c.req.query('q'));
+  return c.json({ suggestions });
 });
 
 app.post('/api/agent', async (c) => {

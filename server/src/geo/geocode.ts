@@ -91,3 +91,14 @@ function curatedFallback(q: string): Place | null {
   }
   return null;
 }
+
+// Campus-spot names matching a typed prefix/fragment — the instant, free tier of the planner's
+// typeahead (see geo/suggest.ts). Matches both the alias terms and the display names.
+export function curatedSuggestions(q: string): string[] {
+  const lower = q.trim().toLowerCase();
+  if (!lower) return [];
+  return CURATED.filter(
+    ({ match, place }) =>
+      place.name.toLowerCase().includes(lower) || match.some((m) => m.includes(lower) || lower.includes(m)),
+  ).map(({ place }) => place.name);
+}
