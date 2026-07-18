@@ -220,6 +220,8 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
             <Mode id="scooter" icon={Zap} min={`${trip.scooterMin}`} label="Scooter" sub="Veo / Spin" />
           </div>
 
+          <TripMap geometry={geometry} mode={mode} showTabs={false} />
+
           <div className="rounded-lg border border-line bg-surface p-3.5">
             <div className="font-mono text-[11px] font-bold uppercase tracking-wide text-muted">Directions</div>
             {mode === 'bus' && trip.bus ? (
@@ -241,7 +243,6 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
             )}
           </div>
 
-          <TripMap geometry={geometry} mode={mode} onModeChange={setMode} />
         </div>
       )}
     </section>
