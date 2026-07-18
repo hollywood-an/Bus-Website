@@ -2,8 +2,9 @@ import { geocode, type Place } from '../geo/geocode';
 import { walkPath, coordKey, type WalkStep, type WalkPath } from '../geo/directions';
 import { haversineMeters } from '../geo/util';
 import { sliceRiddenPath, joinPolylines } from '../geo/polyline';
+import { predictedEtasFor } from '../feed/arrivals';
 import * as feed from '../feed';
-import type { Stop, RouteSummary, RouteDetail } from '../feed';
+import type { Stop, RouteSummary, RouteDetail, Vehicle } from '../feed';
 
 // The multi-modal trip planner shared by the agent tool (plan_route) and GET /api/plan. Geocodes
 // both endpoints, then picks the route + (board, alight) stop pair minimizing REAL walking time
@@ -34,6 +35,7 @@ export interface BusOption {
   stops: number; // intermediate stops ridden past, board to alight
   walkToBoardMin: number;
   walkToBoardMeters: number;
+  waitMin: number; // catchable wait for the next bus at the board stop (0 = walks right on)
   busMin: number;
   walkFromAlightMin: number;
   walkFromAlightMeters: number;
@@ -53,6 +55,7 @@ export interface TripPlan {
   walkSteps: WalkStep[]; // turn-by-turn for the direct route (walk + scooter share it)
   scooterMin: number;
   bus: BusOption | null;
+  busesInService: boolean; // any route running — distinguishes "not running now" from "no good route"
   fastest: 'walk' | 'scooter' | 'bus';
 }
 
@@ -63,6 +66,10 @@ export async function planTrip(fromQuery: string, toQuery: string): Promise<Trip
   if (!from) return { error: 'unresolved_from', query: fromQuery };
   const to = await geocode(toQuery);
   if (!to) return { error: 'unresolved_to', query: toQuery };
+
+  // Snapshot service state in the same tick bestBusOption's Phase A filters on it — the poller can
+  // refresh the vehicle cache mid-await, and the caption must not contradict the filtering.
+  const busesInService = feed.getRoutes().some((r) => feed.routeInService(r.code));
 
   // The direct walk and the bus option (which fetches its own walk legs) are independent.
   const [walk, bus] = await Promise.all([
@@ -83,6 +90,7 @@ export async function planTrip(fromQuery: string, toQuery: string): Promise<Trip
     walkSteps: walk.steps,
     scooterMin,
     bus,
+    busesInService,
     fastest,
   };
 }
@@ -99,8 +107,10 @@ type Candidate = { stop: Stop; idx: number; wp: WalkPath };
 async function bestBusOption(from: Place, to: Place): Promise<BusOption | null> {
   // Phase A — straight-line estimate per route: walks to the nearest stops plus the ride between
   // them (no ride term when one stop is nearest to both ends; Phase D still evaluates real pairs).
+  // Routes with no bus in passenger service are never offered, however good their geometry.
   const scored: ScoredRoute[] = [];
   for (const route of feed.getRoutes()) {
+    if (!feed.routeInService(route.code)) continue;
     const detail = feed.getRouteDetail(route.code);
     if (!detail || detail.stops.length < 2) continue;
 
@@ -140,18 +150,39 @@ async function bestBusOption(from: Place, to: Place): Promise<BusOption | null> 
   ]);
 
   // Phase D — evaluate (board, alight) pairs per survivor by raw seconds; round only for display.
-  let best: { s: ScoredRoute; b: Candidate; a: Candidate; busMeters: number; intermediate: number; busSeconds: number; totalSeconds: number } | null = null;
+  // Total now includes the CATCHABLE wait for the next bus at the board stop (live predictions;
+  // a bus arriving before the rider finishes walking is a miss, not a ride), so a route whose bus
+  // shows up sooner can win. The Phase A prune ignores wait — survivors compare it fairly.
+  const source = feed.vehicleSource();
+  let best: { s: ScoredRoute; b: Candidate; a: Candidate; busMeters: number; intermediate: number; busSeconds: number; waitSeconds: number; totalSeconds: number } | null = null;
   for (const s of survivors) {
+    const vehiclesAll = feed.getVehicles(s.route.code);
+    const activeVehicles = source === 'live' ? vehiclesAll.filter((v) => v.nextStops?.length) : vehiclesAll;
     const boards = withWalks(s.detail.stops, fromWalks);
     const alights = withWalks(s.detail.stops, toWalks);
+    // Full-loop travel time for this route: how long a just-missed bus takes to come back around.
+    const n = s.detail.stops.length;
+    const loopMeters =
+      alongRoute(s.detail.stops, 0, n - 1).meters +
+      haversineMeters(s.detail.stops[n - 1]!.latitude, s.detail.stops[n - 1]!.longitude, s.detail.stops[0]!.latitude, s.detail.stops[0]!.longitude);
+    const loopSeconds = loopMeters / BUS_MPS + n * DWELL_S;
+    const waitCache = new Map<number, number>();
+    const waitFor = (b: Candidate): number => {
+      const hit = waitCache.get(b.idx);
+      if (hit !== undefined) return hit;
+      const wait = waitSecondsAt(activeVehicles, b, loopSeconds);
+      waitCache.set(b.idx, wait);
+      return wait;
+    };
     for (const b of boards) {
       for (const a of alights) {
         if (b.idx === a.idx) continue;
         const { meters: busMeters, intermediate } = alongRoute(s.detail.stops, b.idx, a.idx);
         const busSeconds = busMeters / BUS_MPS + intermediate * DWELL_S;
-        const totalSeconds = b.wp.seconds + busSeconds + a.wp.seconds;
+        const waitSeconds = waitFor(b);
+        const totalSeconds = b.wp.seconds + waitSeconds + busSeconds + a.wp.seconds;
         if (!best || totalSeconds < best.totalSeconds) {
-          best = { s, b, a, busMeters, intermediate, busSeconds, totalSeconds };
+          best = { s, b, a, busMeters, intermediate, busSeconds, waitSeconds, totalSeconds };
         }
       }
     }
@@ -160,6 +191,7 @@ async function bestBusOption(from: Place, to: Place): Promise<BusOption | null> 
 
   const { s, b, a } = best;
   const walkToBoardMin = Math.max(1, Math.round(b.wp.seconds / 60));
+  const waitMin = Math.max(0, Math.round(best.waitSeconds / 60));
   const busMin = Math.max(1, Math.round(best.busSeconds / 60));
   const walkFromAlightMin = Math.max(1, Math.round(a.wp.seconds / 60));
   // Join ALL patterns (e.g. outbound + inbound halves) into the full route path before slicing;
@@ -178,10 +210,11 @@ async function bestBusOption(from: Place, to: Place): Promise<BusOption | null> 
     stops: best.intermediate,
     walkToBoardMin,
     walkToBoardMeters: Math.round(b.wp.meters),
+    waitMin,
     busMin,
     walkFromAlightMin,
     walkFromAlightMeters: Math.round(a.wp.meters),
-    totalMin: walkToBoardMin + busMin + walkFromAlightMin,
+    totalMin: walkToBoardMin + waitMin + busMin + walkFromAlightMin,
     walkToBoardPolyline: b.wp.encodedPolyline,
     walkToBoardSteps: b.wp.steps,
     walkFromAlightPolyline: a.wp.encodedPolyline,
@@ -218,6 +251,25 @@ function candidateStops(
     if (!picked.has(key)) picked.set(key, { lat: near.stop.latitude, lng: near.stop.longitude });
   }
   return picked;
+}
+
+// Catchable wait (seconds) for the next bus at a board stop: the first predicted arrival AT OR
+// AFTER the rider gets there. If every predicted bus passes earlier, the rider misses them all and
+// the soonest-missed bus returns after a full loop. When no prediction covers the stop at all (a
+// bus hasn't planned that far ahead), fall back to a straight-line estimate from the nearest bus
+// (~5 m/s, mirroring feed/arrivals); with no usable signal, assume 0 (the pre-wait behavior).
+function waitSecondsAt(vehicles: Vehicle[], b: Candidate, loopSeconds: number): number {
+  const walkS = b.wp.seconds;
+  const etaS = predictedEtasFor(vehicles, b.stop).map((m) => m * 60);
+  const catchable = etaS.find((e) => e >= walkS);
+  if (catchable !== undefined) return catchable - walkS;
+  if (etaS.length > 0) return Math.max(0, etaS[0]! + loopSeconds - walkS);
+  let nearest: number | null = null;
+  for (const v of vehicles) {
+    const m = haversineMeters(v.latitude, v.longitude, b.stop.latitude, b.stop.longitude);
+    if (nearest === null || m < nearest) nearest = m;
+  }
+  return nearest === null ? 0 : Math.max(0, nearest / 5 - walkS);
 }
 
 // A route's stops that made the candidate cut, with their fetched walk legs attached.

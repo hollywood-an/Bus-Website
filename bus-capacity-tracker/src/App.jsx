@@ -3,6 +3,7 @@ import { Award } from 'lucide-react';
 import { useReports } from './hooks/useReports';
 import { useGoogleMap } from './hooks/useGoogleMap';
 import { useChat } from './hooks/useChat';
+import { usePlanner } from './hooks/usePlanner';
 import Header from './components/Header';
 import Nav from './components/Nav';
 import Toast from './components/Toast';
@@ -30,9 +31,8 @@ function Points({ value }) {
 // map/results dominate. State lives in hooks; views are presentational.
 export default function BusCapacityTracker() {
   const [view, setView] = useState('home');
-  const [plannerFrom, setPlannerFrom] = useState('');
-  const [plannerTo, setPlannerTo] = useState('');
 
+  const planner = usePlanner();
   const reports = useReports();
   const map = useGoogleMap(view, { capacity: reports.capacity, down: reports.down });
 
@@ -90,8 +90,7 @@ export default function BusCapacityTracker() {
           {view === 'home' && (
             <HomeView
               setView={setView}
-              setPlannerFrom={setPlannerFrom}
-              setPlannerTo={setPlannerTo}
+              prefillPlanner={planner.prefill}
               setChatInput={chat.setChatInput}
               routes={reports.routes}
             />
@@ -115,14 +114,7 @@ export default function BusCapacityTracker() {
               setView={setView}
             />
           )}
-          {view === 'planner' && (
-            <PlannerView
-              fromLocation={plannerFrom}
-              toLocation={plannerTo}
-              setFromLocation={setPlannerFrom}
-              setToLocation={setPlannerTo}
-            />
-          )}
+          {view === 'planner' && <PlannerView planner={planner} />}
           {view === 'ai' && (
             <AiView
               chatMessages={chat.chatMessages}

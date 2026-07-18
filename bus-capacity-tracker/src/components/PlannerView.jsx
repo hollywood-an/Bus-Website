@@ -105,7 +105,7 @@ function BusItinerary({ trip }) {
           Board <RouteChip code={b.routeCode} color={b.routeColor} /> {b.routeName}
         </div>
         <div className="mt-0.5 font-mono text-[11px] text-muted">
-          ride ~{b.busMin} min · {b.stops} stop{b.stops === 1 ? '' : 's'} · Stop {b.board.id}
+          {b.waitMin > 0 ? `bus in ~${b.waitMin} min · ` : ''}ride ~{b.busMin} min · {b.stops} stop{b.stops === 1 ? '' : 's'} · Stop {b.board.id}
         </div>
       </TimelineRow>
       <TimelineRow marker={ring} connector="var(--line-2)">
@@ -123,38 +123,10 @@ function BusItinerary({ trip }) {
   );
 }
 
-// Free-text, geocoded planning. from/to controlled by App; trip comes from GET /api/plan (the same
-// planTrip core the agent uses). Restyled to the Bold Buckeye system.
-export default function PlannerView({ fromLocation, toLocation, setFromLocation, setToLocation }) {
-  const [trip, setTrip] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  // Selected mode, shared by the comparison cards, the Directions block, and the map's tabs.
-  const [mode, setMode] = useState('walk');
-
-  useEffect(() => {
-    if (trip) setMode(trip.fastest);
-  }, [trip]);
-
-  // Overrides let a just-picked suggestion plan immediately (state updates land asynchronously).
-  const plan = async (fromValue = fromLocation, toValue = toLocation) => {
-    if (!fromValue.trim() || !toValue.trim()) return;
-    setLoading(true);
-    setError('');
-    setTrip(null);
-    try {
-      const res = await fetch(`/api/plan?from=${encodeURIComponent(fromValue)}&to=${encodeURIComponent(toValue)}`);
-      const data = await res.json();
-      if (data.error === 'unresolved_from') setError(`Couldn't find "${fromValue}" near campus.`);
-      else if (data.error === 'unresolved_to') setError(`Couldn't find "${toValue}" near campus.`);
-      else if (data.error) setError('Could not plan that trip.');
-      else setTrip(data);
-    } catch {
-      setError('Planner is unavailable right now.');
-    } finally {
-      setLoading(false);
-    }
-  };
+// Free-text, geocoded planning. All state lives in usePlanner (App-level) so a planned trip
+// survives view switches; this component is presentational. Restyled to the Bold Buckeye system.
+export default function PlannerView({ planner }) {
+  const { fromLocation, setFromLocation, toLocation, setToLocation, trip, mode, setMode, loading, error, plan } = planner;
 
   const fromRef = useRef(null);
   const toRef = useRef(null);
@@ -247,7 +219,7 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
               icon={Bus}
               min={trip.bus ? `${trip.bus.totalMin}` : '—'}
               label={trip.bus ? `Bus · ${trip.bus.routeCode}` : 'Bus'}
-              sub={trip.bus ? `${trip.bus.busMin}m on board` : 'no good route'}
+              sub={trip.bus ? `${trip.bus.busMin}m on board` : trip.busesInService === false ? 'not running now' : 'no good route'}
               disabled={!trip.bus}
             />
             <Mode id="scooter" icon={Zap} min={`${trip.scooterMin}`} label="Scooter" sub="Veo / Spin" />

@@ -55,6 +55,7 @@ describe('dispatchTool (read tools)', () => {
     expect(r.walkMin).toBeGreaterThan(0);
     expect(r.scooterMin).toBeGreaterThan(0);
     expect(['walk', 'bus', 'scooter']).toContain(r.fastest);
+    if (r.bus) expect(r.bus.waitMin).toBeGreaterThanOrEqual(0);
   });
 
   it('plan_route reports an unresolved location', async () => {
