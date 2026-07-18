@@ -98,3 +98,17 @@ describe('polyline codec + ridden-segment slice', () => {
     expect(decodePolyline(sliceRiddenPath(encodePolyline(LOOP), board, alight, 445_000))).toEqual(LONG);
   });
 });
+
+describe('suggestPlaces (typeahead, curated tier offline)', async () => {
+  const { suggestPlaces } = await import('./suggest');
+
+  it('suggests curated campus spots for a fragment', async () => {
+    const s = await suggestPlaces('mo');
+    expect(s.some((x) => x.main === 'Lincoln & Morrill Towers' && x.source === 'campus')).toBe(true);
+  });
+
+  it('returns nothing for short or unmatched queries', async () => {
+    expect(await suggestPlaces('m')).toEqual([]);
+    expect(await suggestPlaces('zzzz nowhere')).toEqual([]);
+  });
+});

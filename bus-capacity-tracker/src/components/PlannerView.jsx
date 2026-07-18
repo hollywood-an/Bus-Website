@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Footprints, Bus, Zap, Navigation, ArrowUp, CornerUpLeft, CornerUpRight } from 'lucide-react';
 import TripMap from './TripMap';
 import RouteChip from './RouteChip';
+import SuggestInput from './SuggestInput';
 import { tripGeometry } from '../lib/tripGeometry';
 
 // meters -> imperial, the way a US transit app shows it (feet under ~0.1 mi, else miles).
@@ -104,16 +105,17 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
     if (trip) setMode(trip.fastest);
   }, [trip]);
 
-  const plan = async () => {
-    if (!fromLocation.trim() || !toLocation.trim()) return;
+  // Overrides let a just-picked suggestion plan immediately (state updates land asynchronously).
+  const plan = async (fromValue = fromLocation, toValue = toLocation) => {
+    if (!fromValue.trim() || !toValue.trim()) return;
     setLoading(true);
     setError('');
     setTrip(null);
     try {
-      const res = await fetch(`/api/plan?from=${encodeURIComponent(fromLocation)}&to=${encodeURIComponent(toLocation)}`);
+      const res = await fetch(`/api/plan?from=${encodeURIComponent(fromValue)}&to=${encodeURIComponent(toValue)}`);
       const data = await res.json();
-      if (data.error === 'unresolved_from') setError(`Couldn't find "${fromLocation}" near campus.`);
-      else if (data.error === 'unresolved_to') setError(`Couldn't find "${toLocation}" near campus.`);
+      if (data.error === 'unresolved_from') setError(`Couldn't find "${fromValue}" near campus.`);
+      else if (data.error === 'unresolved_to') setError(`Couldn't find "${toValue}" near campus.`);
       else if (data.error) setError('Could not plan that trip.');
       else setTrip(data);
     } catch {
@@ -123,9 +125,8 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
     }
   };
 
-  const onKey = (e) => {
-    if (e.key === 'Enter') plan();
-  };
+  const fromRef = useRef(null);
+  const toRef = useRef(null);
 
   const geometry = tripGeometry(trip);
 
@@ -158,10 +159,36 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
       <p className="mt-1 text-sm text-muted">Any OSU building or nearby address: walk vs. bus vs. scooter.</p>
 
       <div className="mt-4 space-y-2.5">
-        <input value={fromLocation} onChange={(e) => setFromLocation(e.target.value)} onKeyDown={onKey} placeholder="From (e.g. Morrill Tower)" className={inputClass} aria-label="From" />
-        <input value={toLocation} onChange={(e) => setToLocation(e.target.value)} onKeyDown={onKey} placeholder="To (e.g. Thompson Library)" className={inputClass} aria-label="To" />
+        <SuggestInput
+          value={fromLocation}
+          onChange={setFromLocation}
+          onSelect={(text) => {
+            setFromLocation(text);
+            if (toLocation.trim()) plan(text, toLocation);
+            else toRef.current?.focus();
+          }}
+          onEnter={() => plan()}
+          placeholder="From (e.g. Morrill Tower)"
+          ariaLabel="From"
+          inputRef={fromRef}
+          className={inputClass}
+        />
+        <SuggestInput
+          value={toLocation}
+          onChange={setToLocation}
+          onSelect={(text) => {
+            setToLocation(text);
+            if (fromLocation.trim()) plan(fromLocation, text);
+            else fromRef.current?.focus();
+          }}
+          onEnter={() => plan()}
+          placeholder="To (e.g. Thompson Library)"
+          ariaLabel="To"
+          inputRef={toRef}
+          className={inputClass}
+        />
         <button
-          onClick={plan}
+          onClick={() => plan()}
           disabled={loading || !fromLocation.trim() || !toLocation.trim()}
           className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-scarlet px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-scarlet-ink disabled:bg-surface-2 disabled:text-muted"
         >
