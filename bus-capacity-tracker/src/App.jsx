@@ -107,9 +107,9 @@ export default function BusCapacityTracker() {
               feedLive={map.feedLive}
               vehicleSource={map.vehicleSource}
               vehicles={map.vehicles}
+              vehiclesLoaded={map.vehiclesLoaded}
               capacity={reports.capacity}
               down={reports.down}
-              nameForCode={reports.nameForCode}
               locateUser={map.locateUser}
               locateError={map.locateError}
               setView={setView}
