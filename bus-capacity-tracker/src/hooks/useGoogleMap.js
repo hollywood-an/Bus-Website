@@ -32,6 +32,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
   const [feedLive, setFeedLive] = useState(true);
   const [vehicleSource, setVehicleSource] = useState('mock');
   const [vehicles, setVehicles] = useState([]); // latest fetched positions (for the detail panel count)
+  const [vehiclesLoaded, setVehiclesLoaded] = useState(false); // first poll landed ([] can then be truthful)
   // Routes with no bus predicting an upcoming stop (deadheads/none) — joined key, same value-stable
   // pattern as selectedKey, so the route-draw effect only re-fires when the set actually changes.
   const [outOfServiceKey, setOutOfServiceKey] = useState('');
@@ -265,6 +266,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
       if (d.source) setVehicleSource(d.source);
       const list = Array.isArray(d.vehicles) ? d.vehicles : [];
       setVehicles(list);
+      setVehiclesLoaded(true);
       const predicting = new Set(list.filter((v) => v.nextStops?.length > 0).map((v) => v.route));
       setOutOfServiceKey(
         routes
@@ -410,6 +412,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
     feedLive,
     vehicleSource,
     vehicles,
+    vehiclesLoaded,
     setHighlightStops,
     locateUser,
     locateError,

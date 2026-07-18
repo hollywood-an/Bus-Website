@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { MapPinOff, LocateFixed, Navigation2, AlertTriangle } from 'lucide-react';
 import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
+import { CAPACITY_LEVELS } from '../data/capacity';
 import { timeAgo } from '../lib/format';
 
 // Map-forward, now with a detail panel: route lines + stops + buses on the left, and crowding / status /
@@ -16,9 +17,9 @@ export default function MapView({
   feedLive,
   vehicleSource,
   vehicles = [],
+  vehiclesLoaded = false,
   capacity = [],
   down = [],
-  nameForCode = (c) => c,
   locateUser,
   locateError,
   setView,
@@ -137,10 +138,19 @@ export default function MapView({
           )}
         </div>
 
-        {/* Detail panel (right on desktop, below on mobile): legend for All, full detail for one
-            route, a compact card per route when comparing several. */}
+        {/* Detail panel (right on desktop, below on mobile): live service board for All, full detail
+            for one route, a compact card per route when comparing several. */}
         <aside className="mt-3 rounded-xl border border-line bg-surface p-4 md:mt-0 md:w-80 md:shrink-0 md:overflow-y-auto">
-          {selectedRouteObjs.length === 0 && <Legend down={down} nameForCode={nameForCode} />}
+          {selectedRouteObjs.length === 0 && (
+            <ServiceBoard
+              routes={routes}
+              vehicles={vehicles}
+              capByCode={capByCode}
+              downByCode={downByCode}
+              vehiclesLoaded={vehiclesLoaded}
+              onToggle={toggleRoute}
+            />
+          )}
           {selectedRouteObjs.length === 1 && (
             <RouteDetail
               route={selectedRouteObjs[0]}
@@ -329,48 +339,108 @@ function CompactRouteCard({ route, cap, down, routeVehicles = [], vehicleSource 
   );
 }
 
-function Legend({ down, nameForCode }) {
-  const downRoutes = down.filter((d) => d.confirmed);
+// Live per-route service board: the empty-selection panel leads with what's actually running —
+// real statuses (down-report > not-in-service > running) and the soonest next stop with a real
+// feed ETA. Rows toggle the route into the map selection, so the board doubles as a navigator.
+function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded, onToggle }) {
+  const rows = routes.map((r) => {
+    const routeVehicles = vehicles.filter((v) => v.route === r.code);
+    const inService = anyInService(routeVehicles);
+    const dn = downByCode.get(r.code);
+    // Each bus's nextStops[0] is its soonest stop; the route's headline is the soonest across buses.
+    const next =
+      routeVehicles
+        .map((v) => v.nextStops?.[0])
+        .filter(Boolean)
+        .sort((a, b) => a.etaMin - b.etaMin)[0] ?? null;
+    return {
+      route: r,
+      dn,
+      inService,
+      status: statusFor(dn, inService),
+      next,
+      activeCount: routeVehicles.filter((v) => v.nextStops?.length > 0).length,
+      cap: capByCode.get(r.code),
+    };
+  });
+  const running = rows.filter((x) => x.inService && !x.dn?.confirmed).length;
+
   return (
     <div className="space-y-4 text-sm">
-      <h2 className="text-base font-bold">What you&apos;re looking at</h2>
-
-      <div className="space-y-2.5">
-        <div className="flex items-center gap-2.5">
-          <Navigation2 size={16} className="shrink-0 text-ink" fill="currentColor" />
-          <span className="text-ink-soft">Arrows are buses, pointing the way they travel.</span>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <span className="h-3 w-3 shrink-0 rounded-full border-2 border-white bg-ink-soft ring-1 ring-line" />
-          <span className="text-ink-soft">Dots are stops. Tap one for the next arrival.</span>
-        </div>
-      </div>
-
       <div>
-        <div className="text-[11px] font-bold uppercase tracking-wide text-muted">Crowding scale</div>
-        <div className="mt-1.5 flex items-center gap-1">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <span key={i} className="h-2.5 flex-1 rounded-full" style={{ backgroundColor: `var(--cap-${i})` }} />
-          ))}
-        </div>
-        <div className="mt-1 flex justify-between text-[11px] text-muted">
-          <span>Empty</span>
-          <span>Very full</span>
-        </div>
-      </div>
-
-      <div>
-        <div className="text-[11px] font-bold uppercase tracking-wide text-muted">Service</div>
-        {downRoutes.length ? (
-          <div className="mt-1 inline-flex items-center gap-1.5 text-[13px] font-bold text-danger">
-            <AlertTriangle size={14} /> Down: {downRoutes.map((d) => nameForCode(d.route)).join(', ')}
-          </div>
-        ) : (
-          <div className="mt-1 text-[13px] text-ink-soft">All routes running.</div>
+        <h2 className="text-base font-bold">Service right now</h2>
+        {vehiclesLoaded && (
+          <p className="mt-0.5 text-[12px] text-muted">
+            <span className="font-mono font-bold text-ink-soft">{running}</span> of{' '}
+            <span className="font-mono font-bold text-ink-soft">{routes.length}</span> routes running
+          </p>
         )}
       </div>
 
-      <p className="text-[12px] text-muted">Tap routes above to compare — pick several to see them side by side.</p>
+      <ul className="-mx-1.5 space-y-0.5">
+        {rows.map(({ route, dn, inService, status, next, activeCount, cap }) => (
+          <li key={route.code}>
+            <button
+              onClick={() => onToggle(route.code)}
+              className="min-h-11 w-full rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-surface-2"
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="flex min-w-0 items-center gap-2">
+                  <RouteChip code={route.code} color={route.color} />
+                  <span className="truncate text-[13px] font-bold text-ink">{route.name}</span>
+                </span>
+                {vehiclesLoaded ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold" style={{ color: status.color }}>
+                    {dn && <AlertTriangle size={12} />}
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.color }} />
+                    {status.label}
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-[11px] text-muted">checking…</span>
+                )}
+              </span>
+              {vehiclesLoaded && inService && next && (
+                <span className="mt-1 flex items-baseline gap-1.5 text-[12px] text-ink-soft">
+                  <span className="min-w-0 truncate">→ {next.name}</span>
+                  <span className="shrink-0 font-mono text-[11px] font-bold">{next.etaMin === 0 ? 'Due' : `${next.etaMin} min`}</span>
+                  <span className="shrink-0 text-muted">
+                    · {activeCount} bus{activeCount !== 1 ? 'es' : ''}
+                  </span>
+                  {cap && (
+                    <span className="shrink-0 font-bold" style={{ color: `var(--cap-${cap.level})` }}>
+                      · {CAPACITY_LEVELS[cap.level]?.label}
+                    </span>
+                  )}
+                </span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      {/* Compact how-to-read strip; the board above is the headline. */}
+      <div className="space-y-2.5 border-t border-line pt-3 text-[12px] text-ink-soft">
+        <div className="flex items-center gap-2">
+          <Navigation2 size={13} className="shrink-0 text-ink" fill="currentColor" />
+          <span>Arrows are buses, pointing the way they travel.</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-white bg-ink-soft ring-1 ring-line" />
+          <span>Dots are stops. Tap one for the next arrival.</span>
+        </div>
+        <div>
+          <div className="flex items-center gap-1">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <span key={i} className="h-2 flex-1 rounded-full" style={{ backgroundColor: `var(--cap-${i})` }} />
+            ))}
+          </div>
+          <div className="mt-0.5 flex justify-between text-[10px] text-muted">
+            <span>Empty</span>
+            <span>Very full</span>
+          </div>
+        </div>
+        <p className="text-muted">Tap a route to focus it, or pick several chips to compare.</p>
+      </div>
     </div>
   );
 }
