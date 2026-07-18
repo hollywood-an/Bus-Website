@@ -14,7 +14,7 @@ const MODE_META = {
   scooter: { label: 'Scooter', icon: Zap },
 };
 
-export default function TripMap({ geometry, mode: modeProp, onModeChange, defaultMode, heightClass = 'h-[480px] max-h-[60vh] min-h-[260px]' }) {
+export default function TripMap({ geometry, mode: modeProp, onModeChange, defaultMode, showTabs = true, heightClass = 'h-[480px] max-h-[60vh] min-h-[260px]' }) {
   // `mode` can be controlled by a parent (the planner, so its directions follow the tabs) or managed
   // internally (the assistant / home preview). onModeChange fires on every tab change either way.
   // `defaultMode` picks the starting tab when uncontrolled (falls back to fastest if the trip
@@ -141,8 +141,10 @@ export default function TripMap({ geometry, mode: modeProp, onModeChange, defaul
 
   return (
     <div>
-      <div className="mb-2 flex gap-1.5">
-        {modes.map((m) => {
+      {/* Tab row hidden where a parent provides its own mode switcher (the Planner's cards). */}
+      {showTabs && (
+        <div className="mb-2 flex gap-1.5">
+          {modes.map((m) => {
           const Icon = MODE_META[m].icon;
           const active = mode === m;
           const fastest = geometry.fastest === m;
@@ -162,9 +164,10 @@ export default function TripMap({ geometry, mode: modeProp, onModeChange, defaul
                 <span className="rounded-full bg-ok px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white">fast</span>
               )}
             </button>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {mapError ? (
         <div className={`grid w-full place-items-center rounded-lg border border-line bg-surface-2 p-6 text-center ${heightClass}`}>
