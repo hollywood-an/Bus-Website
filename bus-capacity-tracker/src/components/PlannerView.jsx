@@ -4,6 +4,7 @@ import TripMap from './TripMap';
 import RouteChip from './RouteChip';
 import SuggestInput from './SuggestInput';
 import { tripGeometry } from '../lib/tripGeometry';
+import { loadMaps } from '../lib/loadMaps';
 
 // meters -> imperial, the way a US transit app shows it (feet under ~0.1 mi, else miles).
 function fmtDist(m) {
@@ -37,6 +38,36 @@ function StepList({ steps, className = 'max-h-72' }) {
       })}
     </ol>
   );
+}
+
+// Campus map for the empty state, so the page isn't a form floating in whitespace. Swapped out
+// for the real TripMap once a trip is planned. Quietly renders nothing if Maps can't load.
+function CampusPreviewMap() {
+  const divRef = useRef(null);
+  const mapRef = useRef(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    loadMaps()
+      .then((maps) => {
+        if (cancelled || !divRef.current || mapRef.current) return;
+        mapRef.current = new maps.Map(divRef.current, {
+          center: { lat: 40.0017, lng: -83.0197 },
+          zoom: 14,
+          disableDefaultUI: true,
+          zoomControl: true,
+          gestureHandling: 'cooperative',
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (failed) return null;
+  return <div ref={divRef} className="mt-5 h-[420px] max-h-[55vh] min-h-[240px] w-full overflow-hidden rounded-lg border border-line bg-surface-2" />;
 }
 
 // One row of the bus itinerary timeline: a marker + a connector line down to the next row.
@@ -200,6 +231,8 @@ export default function PlannerView({ fromLocation, toLocation, setFromLocation,
       {error && (
         <div className="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-sm font-semibold text-ink-soft">{error}</div>
       )}
+
+      {!trip && <CampusPreviewMap />}
 
       {trip && (
         <div className="mt-5 space-y-4">
