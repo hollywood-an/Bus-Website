@@ -31,6 +31,7 @@ function Points({ value }) {
 // map/results dominate. State lives in hooks; views are presentational.
 export default function BusCapacityTracker() {
   const [view, setView] = useState('home');
+  const [reportRoute, setReportRoute] = useState(''); // Map's "Report this route" prefill
 
   const planner = usePlanner();
   const reports = useReports();
@@ -91,7 +92,7 @@ export default function BusCapacityTracker() {
             <HomeView
               setView={setView}
               prefillPlanner={planner.prefill}
-              setChatInput={chat.setChatInput}
+              askAssistant={chat.sendMessage}
               routes={reports.routes}
             />
           )}
@@ -111,7 +112,10 @@ export default function BusCapacityTracker() {
               down={reports.down}
               locateUser={map.locateUser}
               locateError={map.locateError}
-              setView={setView}
+              openReport={(code) => {
+                setReportRoute(code); // land on Report with this route preselected
+                setView('report');
+              }}
             />
           )}
           {view === 'planner' && <PlannerView planner={planner} />}
@@ -134,6 +138,7 @@ export default function BusCapacityTracker() {
               submitCapacityReport={reports.submitCapacityReport}
               submitBusDownReport={reports.submitBusDownReport}
               nameForCode={reports.nameForCode}
+              initialRoute={reportRoute}
             />
           )}
           {view === 'check' && (

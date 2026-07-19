@@ -11,18 +11,26 @@ export function usePlanner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const seqRef = useRef(0); // drops responses from superseded plan() calls and prefill resets
+  const hadTripRef = useRef(false);
 
+  // First result picks the fastest mode; replans keep the user's chosen mode (unless the new trip
+  // lost its bus option) instead of yanking them back to fastest.
   useEffect(() => {
-    if (trip) setMode(trip.fastest);
+    if (!trip) {
+      hadTripRef.current = false;
+      return;
+    }
+    setMode((m) => (!hadTripRef.current || (m === 'bus' && !trip.bus) ? trip.fastest : m));
+    hadTripRef.current = true;
   }, [trip]);
 
   // Overrides let a just-picked suggestion plan immediately (state updates land asynchronously).
+  // The previous trip stays rendered while a replan is in flight — no blank-out flash.
   const plan = async (fromValue = fromLocation, toValue = toLocation) => {
     if (!fromValue.trim() || !toValue.trim()) return;
     const seq = ++seqRef.current;
     setLoading(true);
     setError('');
-    setTrip(null);
     try {
       const res = await fetch(`/api/plan?from=${encodeURIComponent(fromValue)}&to=${encodeURIComponent(toValue)}`);
       const data = await res.json();

@@ -22,54 +22,54 @@ export async function geocode(query: string): Promise<Place | null> {
   if (cache.has(key)) return cache.get(key) ?? null;
 
   let result: Place | null = null;
+  let googleUnreachable = false;
   if (KEY) {
-    result = (await placesTextSearch(q)) ?? (await geocodeAddress(q));
-    if (result && !withinCampus(result.lat, result.lng)) result = null; // outside the campus area
+    try {
+      result = (await placesTextSearch(q)) ?? (await geocodeAddress(q));
+      if (result && !withinCampus(result.lat, result.lng)) result = null; // outside the campus area
+    } catch {
+      // Transient Google failure: answer with the fallback but DON'T cache the miss, or one
+      // timeout makes this place "not found" until the server restarts.
+      googleUnreachable = true;
+    }
   }
   if (!result) result = curatedFallback(q);
 
-  cache.set(key, result);
+  if (result || !googleUnreachable) cache.set(key, result);
   return result;
 }
 
+// Both lookups return null for a genuine no-result and THROW on fetch failure (see geocode above).
 async function placesTextSearch(q: string): Promise<Place | null> {
-  try {
-    const data = (await fetchJson('https://places.googleapis.com/v1/places:searchText', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': KEY,
-        'X-Goog-FieldMask': 'places.location,places.displayName,places.formattedAddress',
-      },
-      body: JSON.stringify({
-        textQuery: q,
-        locationBias: { circle: { center: { latitude: OSU_CENTER.lat, longitude: OSU_CENTER.lng }, radius: OSU_RADIUS_M } },
-      }),
-    })) as {
-      places?: Array<{ location?: { latitude: number; longitude: number }; displayName?: { text?: string }; formattedAddress?: string }>;
-    };
-    const p = data?.places?.[0];
-    if (!p?.location) return null;
-    return { name: p.displayName?.text ?? q, lat: p.location.latitude, lng: p.location.longitude, address: p.formattedAddress };
-  } catch {
-    return null;
-  }
+  const data = (await fetchJson('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': KEY,
+      'X-Goog-FieldMask': 'places.location,places.displayName,places.formattedAddress',
+    },
+    body: JSON.stringify({
+      textQuery: q,
+      locationBias: { circle: { center: { latitude: OSU_CENTER.lat, longitude: OSU_CENTER.lng }, radius: OSU_RADIUS_M } },
+    }),
+  })) as {
+    places?: Array<{ location?: { latitude: number; longitude: number }; displayName?: { text?: string }; formattedAddress?: string }>;
+  };
+  const p = data?.places?.[0];
+  if (!p?.location) return null;
+  return { name: p.displayName?.text ?? q, lat: p.location.latitude, lng: p.location.longitude, address: p.formattedAddress };
 }
 
 async function geocodeAddress(q: string): Promise<Place | null> {
-  try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
-      `${q} near Ohio State University, Columbus, OH`,
-    )}&key=${KEY}`;
-    const data = (await fetchJson(url)) as {
-      results?: Array<{ geometry?: { location?: { lat: number; lng: number } }; formatted_address?: string }>;
-    };
-    const r = data?.results?.[0];
-    if (!r?.geometry?.location) return null;
-    return { name: q, lat: r.geometry.location.lat, lng: r.geometry.location.lng, address: r.formatted_address };
-  } catch {
-    return null;
-  }
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+    `${q} near Ohio State University, Columbus, OH`,
+  )}&key=${KEY}`;
+  const data = (await fetchJson(url)) as {
+    results?: Array<{ geometry?: { location?: { lat: number; lng: number } }; formatted_address?: string }>;
+  };
+  const r = data?.results?.[0];
+  if (!r?.geometry?.location) return null;
+  return { name: q, lat: r.geometry.location.lat, lng: r.geometry.location.lng, address: r.formatted_address };
 }
 
 // Minimal offline fallback so the app still resolves core campus spots without a key. Approximate

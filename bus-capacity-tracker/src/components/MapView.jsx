@@ -22,7 +22,7 @@ export default function MapView({
   down = [],
   locateUser,
   locateError,
-  setView,
+  openReport,
 }) {
   const [stopCount, setStopCount] = useState(null);
 
@@ -159,7 +159,7 @@ export default function MapView({
               routeVehicles={vehicles.filter((v) => v.route === selectedRouteObjs[0].code)}
               vehicleSource={vehicleSource}
               stopCount={stopCount}
-              setView={setView}
+              openReport={openReport}
             />
           )}
           {selectedRouteObjs.length >= 2 && (
@@ -221,7 +221,7 @@ function BusNextStops({ vehicle }) {
   );
 }
 
-function RouteDetail({ route, cap, down, routeVehicles = [], vehicleSource, stopCount, setView }) {
+function RouteDetail({ route, cap, down, routeVehicles = [], vehicleSource, stopCount, openReport }) {
   const inService = anyInService(routeVehicles);
   const activeBuses = routeVehicles.filter((v) => v.nextStops?.length > 0);
   const status = statusFor(down, inService);
@@ -282,9 +282,9 @@ function RouteDetail({ route, cap, down, routeVehicles = [], vehicleSource, stop
         )}
       </div>
 
-      {setView && (
+      {openReport && (
         <button
-          onClick={() => setView('report')}
+          onClick={() => openReport(route.code)}
           className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-bold text-ink-soft transition-colors hover:bg-surface-2"
         >
           Report this route&apos;s crowding
@@ -362,6 +362,10 @@ function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded,
     };
   });
   const running = rows.filter((x) => x.inService && !x.dn?.confirmed).length;
+  // Running routes first — the 2-second glance shouldn't dig past four sleeping rows. Then
+  // down-reported (needs attention), then not-in-service; stable feed order within each group.
+  const rowRank = (x) => (x.inService && !x.dn?.confirmed ? 0 : x.dn ? 1 : 2);
+  const ordered = rows.slice().sort((a, b) => rowRank(a) - rowRank(b));
 
   return (
     <div className="space-y-4 text-sm">
@@ -376,7 +380,7 @@ function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded,
       </div>
 
       <ul className="-mx-1.5 space-y-0.5">
-        {rows.map(({ route, dn, inService, status, busStops, cap }) => (
+        {ordered.map(({ route, dn, inService, status, busStops, cap }) => (
           <li key={route.code}>
             <button
               onClick={() => onToggle(route.code)}

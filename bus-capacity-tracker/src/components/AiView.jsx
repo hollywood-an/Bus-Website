@@ -55,8 +55,8 @@ export default function AiView({
                 {EXAMPLES.map((q) => (
                   <button
                     key={q}
-                    onClick={() => setChatInput(q)}
-                    className="rounded-full border border-line bg-surface px-3 py-1.5 text-[13px] font-semibold text-ink-soft transition-colors hover:bg-surface-2"
+                    onClick={() => sendMessage(q)}
+                    className="min-h-11 rounded-full border border-line bg-surface px-3 py-1.5 text-[13px] font-semibold text-ink-soft transition-colors hover:bg-surface-2"
                   >
                     {q}
                   </button>
@@ -118,14 +118,16 @@ export default function AiView({
       )}
 
       <div className="mt-3 flex gap-2">
+        {/* Input stays enabled while the assistant thinks (typing the follow-up is fine; only
+            submission is gated in sendMessage), so focus is never dropped mid-conversation. */}
         <input
           type="text"
+          autoFocus
           value={chatInput}
           onChange={(e) => setChatInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-          disabled={isAiThinking}
           placeholder="Ask about routes, crowding, or a trip…"
-          className="flex-1 rounded-lg border border-line bg-surface px-3.5 py-2.5 text-sm text-ink placeholder:text-muted focus:border-scarlet focus:outline-none disabled:opacity-60"
+          className="flex-1 rounded-lg border border-line bg-surface px-3.5 py-2.5 text-sm text-ink placeholder:text-muted focus:border-scarlet focus:outline-none"
         />
         <button
           onClick={sendMessage}

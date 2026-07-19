@@ -7,7 +7,7 @@ const NAV_ITEMS = [
   { id: 'planner', label: 'Plan', icon: Navigation },
   { id: 'ai', label: 'Assistant', icon: Bot },
   { id: 'report', label: 'Report', icon: Megaphone },
-  { id: 'check', label: 'Check', icon: Gauge },
+  { id: 'check', label: 'Crowding', icon: Gauge },
 ];
 
 export default function Nav({ view, setView, variant = 'rail' }) {

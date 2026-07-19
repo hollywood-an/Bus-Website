@@ -50,9 +50,9 @@ function RouteMotif() {
 // ≥44px tap height on the primary actions (project a11y standard; this page is phone-first).
 const primaryBtn = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-scarlet px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-scarlet-ink';
 const ghostBtn = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-bold text-ink-soft transition-colors hover:bg-surface-2';
-const chip = 'inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-ink-soft transition-colors hover:border-scarlet hover:text-scarlet-ink';
+const chip = 'inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-ink-soft transition-colors hover:border-scarlet hover:text-scarlet-ink';
 
-export default function HomeView({ setView, prefillPlanner, setChatInput, routes = [] }) {
+export default function HomeView({ setView, prefillPlanner, askAssistant, routes = [] }) {
   const [trip, setTrip] = useState(null);
 
   // Plan a real demo trip so the Assistant preview shows the actual, interactive map.
@@ -72,7 +72,7 @@ export default function HomeView({ setView, prefillPlanner, setChatInput, routes
   const geometry = tripGeometry(trip);
 
   const goAssistant = (q) => {
-    setChatInput(q);
+    if (q) askAssistant(q); // question chips ask immediately; the plain "open" buttons just navigate
     setView('ai');
   };
   const goPlan = (from, to) => {
