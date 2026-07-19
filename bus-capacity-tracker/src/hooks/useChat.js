@@ -37,18 +37,21 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
     const p = pendingConfirm;
     if (!p) return;
     setPendingConfirm(null);
-    try {
-      if (p.action === 'submit_capacity_report') await submitCapacityReport(p.args.route, p.args.level);
-      else await submitBusDownReport(p.args.route);
+    const ok =
+      p.action === 'submit_capacity_report'
+        ? await submitCapacityReport(p.args.route, p.args.level)
+        : await submitBusDownReport(p.args.route);
+    if (ok) {
       const what = p.args.kind === 'capacity' ? `as "${p.args.label}"` : 'as down';
       setChatMessages((prev) => [
         ...prev,
         { role: 'assistant', content: `Done. Reported ${p.args.name} ${what}. Thanks for keeping it fresh for everyone.` },
       ]);
-    } catch {
+    } else {
+      // The toast from useReports says exactly why (rate limit, invalid, offline).
       setChatMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: "That didn't go through. Try again from the Report tab." },
+        { role: 'assistant', content: "That didn't go through — the notice explains why. The Report tab works too." },
       ]);
     }
   };
@@ -59,13 +62,13 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
     setChatMessages((prev) => [...prev, { role: 'assistant', content: "No problem, I didn't submit anything." }]);
   };
 
-  const sendMessage = async () => {
-    if (!chatInput.trim() || isAiThinking) return;
-
-    const userMessage = chatInput.trim();
+  // Optional `text` lets example-prompt chips send in one tap instead of just filling the input.
+  const sendMessage = async (text) => {
+    const userMessage = (typeof text === 'string' ? text : chatInput).trim();
+    if (!userMessage || isAiThinking) return;
     const history = [...chatMessages, { role: 'user', content: userMessage }];
     setChatMessages(history);
-    setChatInput('');
+    if (typeof text !== 'string') setChatInput(''); // a chip send leaves the user's draft alone
     setIsAiThinking(true);
 
     const messages = history
@@ -105,7 +108,14 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
     try {
       await streamAgent({ messages, onDelta, onEvent });
       if (!received) {
-        setChatMessages((prev) => [...prev, { role: 'assistant', content: generateLocalFallback(userMessage) }]);
+        // Same offline disclaimer as the throw path — an unlabeled fallback reads as a live answer.
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: `${generateLocalFallback(userMessage)}\n\n_(Live assistant unavailable right now; this is an offline answer.)_`,
+          },
+        ]);
       }
     } catch (error) {
       console.error('Agent error:', error?.message ?? error);
@@ -185,7 +195,7 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
         }
         return response;
       } else if (fromLocation && toLocation) {
-        return `I found ${fromLocation} and ${toLocation}, but I don't have route data for that pair. Try the Route Planner tab.`;
+        return `I found ${fromLocation} and ${toLocation}, but I don't have route data for that pair. Try the Plan tab.`;
       } else if (lowerMessage.includes(' to ')) {
         return `I couldn't identify the locations. Try: "How do I get from Thompson to Ohio Union?"`;
       }
@@ -194,7 +204,7 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
     if (lowerMessage.includes('down') || lowerMessage.includes('not running') || lowerMessage.includes('broken')) {
       return downBuses.length > 0
         ? `Currently reported down: ${downBuses.join(', ')}. Try an alternative route or check back later.`
-        : `No buses are confirmed down right now; routes should be running normally.`;
+        : `I can't reach live data right now — no outage reports were confirmed before I went offline. Check the Map tab for current status.`;
     }
 
     if (lowerMessage.includes('least crowded') || lowerMessage.includes('empty') || lowerMessage.includes('comfortable')) {

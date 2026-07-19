@@ -32,6 +32,7 @@ export async function suggestPlaces(query: unknown): Promise<Suggestion[]> {
   }));
 
   let google: Suggestion[] = [];
+  let googleOk = true;
   if (KEY) {
     try {
       const data = (await fetchJson('https://places.googleapis.com/v1/places:autocomplete', {
@@ -61,7 +62,7 @@ export async function suggestPlaces(query: unknown): Promise<Suggestion[]> {
         }))
         .filter((s) => s.text && s.main);
     } catch {
-      /* campus-only when Google is unavailable */
+      googleOk = false; // campus-only this time; don't cache the degraded list
     }
   }
 
@@ -76,6 +77,6 @@ export async function suggestPlaces(query: unknown): Promise<Suggestion[]> {
     })
     .slice(0, MAX_SUGGESTIONS);
 
-  cache.set(key, merged);
+  if (googleOk) cache.set(key, merged);
   return merged;
 }
