@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { loadMaps } from '../lib/loadMaps';
+import { CAPACITY_LEVELS } from '../data/capacity';
+import { timeAgo } from '../lib/format';
 
 // Drives the campus map from the server feed (Phase 1.5). Route list, stops, and polylines come
 // from /api/routes[/:code]; vehicles from /api/vehicles (live or mock, server's choice). Crowding +
@@ -10,7 +12,7 @@ import { loadMaps } from '../lib/loadMaps';
 // degrades gracefully; `feedLive` surfaces when we're not on fresh data.
 const FALLBACK_CENTER = { lat: 40.0017, lng: -83.0197 };
 const VEHICLE_POLL_MS = 15000;
-const CAP_LABELS = ['Empty', 'Few seats', 'Filling up', 'Crowded', 'Very full'];
+const CAP_LABELS = CAPACITY_LEVELS.map((l) => l.label); // single label source: data/capacity.js
 const CAP_COLORS = ['var(--cap-0)', 'var(--cap-1)', 'var(--cap-2)', 'var(--cap-3)', 'var(--cap-4)'];
 const USER_DOT = '#1d4ed8';
 
@@ -28,7 +30,15 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
   const [mapError, setMapError] = useState(false); // Maps JS failed to load (bad/missing key, offline)
   const [routesError, setRoutesError] = useState(false); // /api/routes unreachable
   const [routes, setRoutes] = useState([]); // [{ code, name, color, darkColor }]
-  const [selectedRoutes, setSelectedRoutesState] = useState([]); // route codes; [] = show all
+  // Route selection survives visits — the daily CC rider shouldn't re-tap their chip every day.
+  const [selectedRoutes, setSelectedRoutesState] = useState(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem('map-selected-routes') ?? '[]');
+      return Array.isArray(v) ? v.filter((c) => typeof c === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
   const [feedLive, setFeedLive] = useState(true);
   const [vehicleSource, setVehicleSource] = useState('mock');
   const [vehicles, setVehicles] = useState([]); // latest fetched positions (for the detail panel count)
@@ -69,13 +79,23 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
   // selection's VALUE, not the array's identity.
   const selectedKey = selectedRoutes.join('|');
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('map-selected-routes', JSON.stringify(selectedKey ? selectedKey.split('|') : []));
+    } catch {
+      /* private mode etc. — selection just won't persist */
+    }
+  }, [selectedKey]);
+
   const colorFor = useCallback((code) => routes.find((r) => r.code === code)?.color || '#64748b', [routes]);
   const nameFor = useCallback((code) => routes.find((r) => r.code === code)?.name || code, [routes]);
   const crowdingHtml = useCallback((code) => {
     const c = capRef.current.find((x) => x.route === code);
     if (!c) return '<span style="color:#666">No crowding reports yet</span>';
     const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:9px;background:${CAP_COLORS[c.level]};margin-right:5px;vertical-align:-1px"></span>`;
-    return `${dot}${CAP_LABELS[c.level]}${c.confident ? '' : ' (unconfirmed)'}`;
+    // Freshness matters: cached/stale reports must not read as live (PRODUCT.md "Honest signal").
+    const age = c.newestAt ? ` <span style="color:#888">· ${timeAgo(c.newestAt)}</span>` : '';
+    return `${dot}${CAP_LABELS[c.level]}${c.confident ? '' : ' (unconfirmed)'}${age}`;
   }, []);
   const isDown = useCallback((code) => downRef.current.some((d) => d.route === code && d.confirmed), []);
 

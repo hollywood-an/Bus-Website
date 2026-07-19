@@ -65,8 +65,15 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
       e.preventDefault();
       setActive((a) => (a <= 0 ? items.length - 1 : a - 1));
     } else if (e.key === 'Enter') {
-      e.preventDefault();
-      pick(items[active >= 0 ? active : 0]);
+      // Standard combobox semantics: Enter commits YOUR text unless you explicitly arrowed onto a
+      // suggestion. Auto-committing item #0 silently replaced typed addresses.
+      if (active >= 0) {
+        e.preventDefault();
+        pick(items[active]);
+      } else {
+        setOpen(false);
+        onEnter?.();
+      }
     } else if (e.key === 'Escape') {
       setOpen(false);
     }

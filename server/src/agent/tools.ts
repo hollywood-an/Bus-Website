@@ -7,6 +7,7 @@ import { validateReport } from '../validateReport';
 // plain JSON-serializable object. Tools validate their own input and return { error } rather than
 // throwing, so the model can recover. Anthropic tool-use schemas are exported as TOOL_DEFS.
 
+// Client twin: CAPACITY_LEVELS in bus-capacity-tracker/src/data/capacity.js — keep identical.
 export const CAPACITY_LABELS = ['Empty', 'Few seats', 'Filling up', 'Crowded', 'Very full'];
 const round = (n: number) => Math.round(n * 1e6) / 1e6;
 

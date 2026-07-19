@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Footprints, Bus, Zap, Navigation, ArrowUp, CornerUpLeft, CornerUpRight } from 'lucide-react';
+import { Footprints, Bus, Zap, Navigation, ArrowUp, ArrowUpDown, CornerUpLeft, CornerUpRight } from 'lucide-react';
 import TripMap from './TripMap';
 import RouteChip from './RouteChip';
 import SuggestInput from './SuggestInput';
@@ -162,34 +162,53 @@ export default function PlannerView({ planner }) {
       <p className="mt-1 text-sm text-muted">Any OSU building or nearby address: walk vs. bus vs. scooter.</p>
 
       <div className="mt-4 space-y-2.5">
-        <SuggestInput
-          value={fromLocation}
-          onChange={setFromLocation}
-          onSelect={(text) => {
-            setFromLocation(text);
-            if (toLocation.trim()) plan(text, toLocation);
-            else toRef.current?.focus();
-          }}
-          onEnter={() => plan()}
-          placeholder="From (e.g. Morrill Tower)"
-          ariaLabel="From"
-          inputRef={fromRef}
-          className={inputClass}
-        />
-        <SuggestInput
-          value={toLocation}
-          onChange={setToLocation}
-          onSelect={(text) => {
-            setToLocation(text);
-            if (fromLocation.trim()) plan(fromLocation, text);
-            else fromRef.current?.focus();
-          }}
-          onEnter={() => plan()}
-          placeholder="To (e.g. Thompson Library)"
-          ariaLabel="To"
-          inputRef={toRef}
-          className={inputClass}
-        />
+        <div className="flex items-stretch gap-2">
+          <div className="min-w-0 flex-1 space-y-2.5">
+            <SuggestInput
+              value={fromLocation}
+              onChange={setFromLocation}
+              onSelect={(text) => {
+                setFromLocation(text);
+                if (toLocation.trim()) plan(text, toLocation);
+                else toRef.current?.focus();
+              }}
+              onEnter={() => plan()}
+              placeholder="From (e.g. Morrill Tower)"
+              ariaLabel="From"
+              inputRef={fromRef}
+              className={inputClass}
+            />
+            <SuggestInput
+              value={toLocation}
+              onChange={setToLocation}
+              onSelect={(text) => {
+                setToLocation(text);
+                if (fromLocation.trim()) plan(fromLocation, text);
+                else fromRef.current?.focus();
+              }}
+              onEnter={() => plan()}
+              placeholder="To (e.g. Thompson Library)"
+              ariaLabel="To"
+              inputRef={toRef}
+              className={inputClass}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const f = fromLocation;
+              const t = toLocation;
+              setFromLocation(t);
+              setToLocation(f);
+              if (trip && f.trim() && t.trim()) plan(t, f); // return trip in one tap
+            }}
+            aria-label="Swap from and to"
+            title="Swap from and to"
+            className="grid min-h-11 w-11 shrink-0 place-items-center self-center rounded-lg border border-line bg-surface text-ink-soft transition-colors hover:bg-surface-2 hover:text-scarlet-ink"
+          >
+            <ArrowUpDown size={16} />
+          </button>
+        </div>
         <button
           onClick={() => plan()}
           disabled={loading || !fromLocation.trim() || !toLocation.trim()}
@@ -207,7 +226,7 @@ export default function PlannerView({ planner }) {
       {!trip && <CampusPreviewMap />}
 
       {trip && (
-        <div className="mt-5 space-y-4">
+        <div className={`mt-5 space-y-4 transition-opacity ${loading ? 'opacity-60' : ''}`}>
           <div className="font-bold text-ink">
             {trip.from.name} <span className="text-muted">→</span> {trip.to.name}
           </div>

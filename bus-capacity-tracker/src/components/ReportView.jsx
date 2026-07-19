@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Megaphone, AlertTriangle } from 'lucide-react';
 import { CAPACITY_LEVELS } from '../data/capacity';
 import CapacityMeter from './CapacityMeter';
@@ -9,21 +9,28 @@ const CAP_VARS = ['var(--cap-0)', 'var(--cap-1)', 'var(--cap-2)', 'var(--cap-3)'
 const selectClass =
   'w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm font-semibold text-ink focus:border-scarlet focus:outline-none';
 
-export default function ReportView({ routes, down, submitCapacityReport, submitBusDownReport, nameForCode }) {
-  const [capRoute, setCapRoute] = useState('');
+export default function ReportView({ routes, down, submitCapacityReport, submitBusDownReport, nameForCode, initialRoute = '' }) {
+  const [capRoute, setCapRoute] = useState(initialRoute);
   const [level, setLevel] = useState(2);
-  const [downRoute, setDownRoute] = useState('');
+  const [downRoute, setDownRoute] = useState(initialRoute);
 
-  const onCap = () => {
+  // The Map's "Report this route's crowding" button lands here preselected.
+  useEffect(() => {
+    if (initialRoute) {
+      setCapRoute(initialRoute);
+      setDownRoute(initialRoute);
+    }
+  }, [initialRoute]);
+
+  // The route stays selected after a submit — the daily rider reports the same bus every morning.
+  const onCap = async () => {
     if (!capRoute) return;
-    submitCapacityReport(capRoute, level);
-    setCapRoute('');
-    setLevel(2);
+    const ok = await submitCapacityReport(capRoute, level);
+    if (ok) setLevel(2);
   };
   const onDown = () => {
     if (!downRoute) return;
     submitBusDownReport(downRoute);
-    setDownRoute('');
   };
 
   return (

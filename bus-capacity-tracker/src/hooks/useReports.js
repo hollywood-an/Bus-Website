@@ -151,27 +151,42 @@ export function useReports() {
     return res.json();
   };
 
+  // Honest failure copy: a rate-limited rider must not be told to "try again" (the one move
+  // guaranteed to keep failing), and a rejected report is not a connectivity problem.
+  const submitFailureMessage = (err) => {
+    const status = Number(String(err?.message ?? '').replace('report_', ''));
+    if (status === 429) return "You're reporting too often — give it a minute.";
+    if (status >= 400 && status < 500) return "That report wasn't valid, so nothing was saved.";
+    if (status >= 500) return "The server had a problem. Try again in a moment.";
+    return "Couldn't reach the server (offline?). Try again.";
+  };
+
+  // Both submitters resolve true on success, false on failure (callers decide what to keep/clear).
   const submitCapacityReport = async (code, level) => {
-    if (!code) return;
+    if (!code) return false;
     try {
       const d = await postReport({ kind: 'capacity', route: code, level });
       setCapacity(d.capacity ?? []);
       setDown(d.down ?? []);
       await award(d.pointsDelta ?? 1, `Reported ${nameForCode(code)} · +${d.pointsDelta ?? 1} point`);
-    } catch {
-      flash("Couldn't submit (offline?). Try again.");
+      return true;
+    } catch (err) {
+      flash(submitFailureMessage(err));
+      return false;
     }
   };
 
   const submitBusDownReport = async (code) => {
-    if (!code) return;
+    if (!code) return false;
     try {
       const d = await postReport({ kind: 'down', route: code });
       setCapacity(d.capacity ?? []);
       setDown(d.down ?? []);
       await award(d.pointsDelta ?? 2, `Reported ${nameForCode(code)} down · +${d.pointsDelta ?? 2} points`);
-    } catch {
-      flash("Couldn't submit (offline?). Try again.");
+      return true;
+    } catch (err) {
+      flash(submitFailureMessage(err));
+      return false;
     }
   };
 
