@@ -9,16 +9,18 @@ import { tripGeometry } from '../lib/tripGeometry';
 // them. The Assistant preview embeds the real, interactive TripMap (live data, clickable mode switcher),
 // and the CTAs jump straight into Plan or the Assistant, prefilling an example.
 
-// Mirrors PlannerView's Mode card; used for the static Plan preview.
-function ModeCard({ icon, min, label, sub, fast = false }) {
+// Mirrors PlannerView's Mode card; drives the live Plan preview. `featured` is the "this is the
+// example" highlight (the bus, always); `fastest` is the honest badge on whichever mode is genuinely
+// fastest — the two are separate so leading with the bus never misstates what's fastest.
+function ModeCard({ icon, min, label, sub, featured = false, fastest = false }) {
   const Icon = icon;
   return (
-    <div className={`rounded-lg border p-2.5 text-center ${fast ? 'border-scarlet bg-scarlet-wash' : 'border-line bg-surface'}`}>
-      <Icon size={18} className={`mx-auto ${fast ? 'text-scarlet-ink' : 'text-ink-soft'}`} />
+    <div className={`rounded-lg border p-2.5 text-center ${featured ? 'border-scarlet bg-scarlet-wash' : 'border-line bg-surface'}`}>
+      <Icon size={18} className={`mx-auto ${featured ? 'text-scarlet-ink' : 'text-ink-soft'}`} />
       <div className="mt-1 font-mono text-xl font-bold text-ink">{min}</div>
       <div className="text-[12px] font-bold text-ink-soft">{label}</div>
       <div className="text-[11px] text-muted">{sub}</div>
-      {fast && <div className="mt-1 inline-block rounded-full bg-ok px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white">fastest</div>}
+      {fastest && <div className="mt-1 inline-block rounded-full bg-ok px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white">fastest</div>}
     </div>
   );
 }
@@ -145,11 +147,27 @@ export default function HomeView({ setView, prefillPlanner, askAssistant, routes
           </div>
         </div>
         <div className="rounded-xl border border-line bg-surface p-3.5">
-          <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-wide text-muted">Morrill to Ohio Union</div>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-mono text-[11px] font-bold uppercase tracking-wide text-muted">Morrill to Ohio Union</span>
+            {trip && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-ok">
+                <span className="h-1.5 w-1.5 rounded-full bg-ok" /> live
+              </span>
+            )}
+          </div>
+          {/* Driven by the real /api/plan trip (same data as the map below) — never hardcoded.
+              The bus card is featured at all times; the "fastest" badge stays honest. */}
           <div className="grid grid-cols-3 gap-2">
-            <ModeCard icon={Footprints} min="19" label="Walk" sub="free" />
-            <ModeCard icon={Bus} min="7" label="Bus · CLS" sub="Mid Towers" />
-            <ModeCard icon={Zap} min="6" label="Scooter" sub="Veo / Spin" fast />
+            <ModeCard icon={Footprints} min={trip ? trip.walkMin : '—'} label="Walk" sub="free" fastest={trip?.fastest === 'walk'} />
+            <ModeCard
+              icon={Bus}
+              featured
+              min={trip?.bus ? trip.bus.totalMin : '—'}
+              label={trip?.bus ? `Bus · ${trip.bus.routeCode}` : 'Bus'}
+              sub={trip ? (trip.bus ? trip.bus.board.name : 'not running now') : ' '}
+              fastest={trip?.fastest === 'bus'}
+            />
+            <ModeCard icon={Zap} min={trip ? trip.scooterMin : '—'} label="Scooter" sub="Veo / Spin" fastest={trip?.fastest === 'scooter'} />
           </div>
         </div>
       </div>
