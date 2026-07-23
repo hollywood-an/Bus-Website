@@ -99,6 +99,11 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
       });
     };
     const onEvent = (evt) => {
+      if (evt?.type === 'stream_error') {
+        // The answer was cut off mid-stream — say so instead of ending on a half sentence.
+        onDelta('\n\n_(Lost the assistant mid-answer — ask again.)_');
+        return;
+      }
       if (evt?.type === 'ui_directive' && evt.action === 'show_trip') {
         bubbleId = null; // the map lands after this bubble; the next delta opens a new one
       }

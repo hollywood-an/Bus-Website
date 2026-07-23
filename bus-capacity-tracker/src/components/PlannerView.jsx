@@ -105,7 +105,7 @@ function BusItinerary({ trip }) {
           Board <RouteChip code={b.routeCode} color={b.routeColor} /> {b.routeName}
         </div>
         <div className="mt-0.5 font-mono text-[11px] text-muted">
-          {b.waitMin > 0 ? `bus in ~${b.waitMin} min · ` : ''}ride ~{b.busMin} min · {b.stops} stop{b.stops === 1 ? '' : 's'} · Stop {b.board.id}
+          {b.waitMin > 0 ? `wait ~${b.waitMin} min at the stop · ` : ''}ride ~{b.busMin} min · {b.stops} stop{b.stops === 1 ? '' : 's'} · Stop {b.board.id}
         </div>
       </TimelineRow>
       <TimelineRow marker={ring} connector="var(--line-2)">

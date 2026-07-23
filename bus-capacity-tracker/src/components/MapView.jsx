@@ -3,6 +3,7 @@ import { MapPinOff, LocateFixed, Navigation2, AlertTriangle } from 'lucide-react
 import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
 import { CAPACITY_LEVELS } from '../data/capacity';
+import { statusFor } from '../lib/serviceStatus';
 import { timeAgo } from '../lib/format';
 
 // Map-forward, now with a detail panel: route lines + stops + buses on the left, and crowding / status /
@@ -62,7 +63,10 @@ export default function MapView({
             <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: feedLive ? 'var(--ok)' : 'var(--warn)' }} />
             {feedLive ? 'Live feed' : 'Last known'}
           </span>
-          <span className="rounded-full bg-surface-2 px-2.5 py-1 text-muted">buses: {vehicleSource === 'live' ? 'live' : 'simulated'}</span>
+          {/* No claim before data: "simulated" only when the server actually says so (audit D6b). */}
+          {vehicleSource != null && (
+            <span className="rounded-full bg-surface-2 px-2.5 py-1 text-muted">buses: {vehicleSource === 'live' ? 'live' : 'simulated'}</span>
+          )}
         </div>
       </div>
 
@@ -181,18 +185,11 @@ export default function MapView({
 
       <p className="mt-2.5 text-xs text-muted">
         Stops and route lines from OSU&apos;s live feed. Arrows are buses
-        {vehicleSource === 'live' ? ' (live positions)' : ' (simulated while service is paused)'}; tap a stop or bus for details.
+        {vehicleSource == null ? '' : vehicleSource === 'live' ? ' (live positions)' : ' (simulated while service is paused)'}; tap a stop
+        or bus for details.
       </p>
     </section>
   );
-}
-
-// Shared running/down status for the detail panel and compact cards. Rider down-reports win;
-// otherwise a route with no bus predicting an upcoming stop is asleep, not "Running".
-function statusFor(down, inService = true) {
-  if (down) return down.confirmed ? { label: 'Reported down', color: 'var(--danger)' } : { label: 'Possibly down', color: 'var(--warn)' };
-  if (!inService) return { label: 'Not in service', color: 'var(--muted)' };
-  return { label: 'Running', color: 'var(--ok)' };
 }
 
 // Mirrors the server's routeInService: end-of-service vehicles linger in the live feed with no
@@ -257,7 +254,7 @@ function RouteDetail({ route, cap, down, routeVehicles = [], vehicleSource, stop
           <div className="text-[11px] font-bold uppercase tracking-wide text-muted">Buses now</div>
           <div className="mt-0.5 font-mono text-lg font-bold text-ink">{routeVehicles.length}</div>
           <div className="text-[11px] text-muted">
-            {vehicleSource !== 'live' ? 'simulated' : inService ? 'live' : 'tracked, not in service'}
+            {vehicleSource == null ? '' : vehicleSource !== 'live' ? 'simulated' : inService ? 'live' : 'tracked, not in service'}
           </div>
         </div>
         <div>
@@ -324,8 +321,8 @@ function CompactRouteCard({ route, cap, down, routeVehicles = [], vehicleSource 
       </div>
 
       <div className="mt-2 font-mono text-[11px] text-muted">
-        {routeVehicles.length} bus{routeVehicles.length !== 1 ? 'es' : ''} ·{' '}
-        {vehicleSource !== 'live' ? 'simulated' : inService ? 'live' : 'tracked, not in service'}
+        {routeVehicles.length} bus{routeVehicles.length !== 1 ? 'es' : ''}
+        {vehicleSource == null ? '' : ` · ${vehicleSource !== 'live' ? 'simulated' : inService ? 'live' : 'tracked, not in service'}`}
       </div>
 
       {activeBuses.length > 0 && (
@@ -361,10 +358,11 @@ function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded,
       cap: capByCode.get(r.code),
     };
   });
-  const running = rows.filter((x) => x.inService && !x.dn?.confirmed).length;
-  // Running routes first — the 2-second glance shouldn't dig past four sleeping rows. Then
-  // down-reported (needs attention), then not-in-service; stable feed order within each group.
-  const rowRank = (x) => (x.inService && !x.dn?.confirmed ? 0 : x.dn ? 1 : 2);
+  // Count and sort from the SAME statusFor label the rows render — the summary must never
+  // contradict the list below it (audit D6a).
+  const running = rows.filter((x) => x.status.label === 'Running').length;
+  // Running first (the 2-second glance), then down-reported (needs attention), then asleep.
+  const rowRank = (x) => (x.status.label === 'Running' ? 0 : x.status.label === 'Not in service' ? 2 : 1);
   const ordered = rows.slice().sort((a, b) => rowRank(a) - rowRank(b));
 
   return (

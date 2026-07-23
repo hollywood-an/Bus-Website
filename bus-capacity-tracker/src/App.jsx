@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Award } from 'lucide-react';
 import { useReports } from './hooks/useReports';
 import { useGoogleMap } from './hooks/useGoogleMap';
@@ -32,10 +32,31 @@ function Points({ value }) {
 export default function BusCapacityTracker() {
   const [view, setView] = useState('home');
   const [reportRoute, setReportRoute] = useState(''); // Map's "Report this route" prefill
+  // Per-route service state for the Crowding board (null until the first poll — no false claims).
+  // The Map view has its own richer vehicle poll; this is the lightweight twin for 'check'.
+  const [serviceByCode, setServiceByCode] = useState(null);
 
   const planner = usePlanner();
   const reports = useReports();
   const map = useGoogleMap(view, { capacity: reports.capacity, down: reports.down });
+
+  useEffect(() => {
+    if (view !== 'check') return;
+    let cancelled = false;
+    const poll = async () => {
+      const d = await fetch('/api/service')
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (cancelled || !d) return;
+      setServiceByCode(Object.fromEntries((d.routes ?? []).map((r) => [r.code, r.inService])));
+    };
+    poll();
+    const id = setInterval(poll, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [view]);
 
   // Apply UI directives the agent streams (Phase 4): it operates the app, not just describes it.
   const applyDirective = (d) => {
@@ -146,8 +167,7 @@ export default function BusCapacityTracker() {
               routes={reports.routes}
               capacity={reports.capacity}
               down={reports.down}
-              checkStatus={reports.checkStatus}
-              nameForCode={reports.nameForCode}
+              serviceByCode={serviceByCode}
             />
           )}
         </main>

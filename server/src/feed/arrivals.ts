@@ -32,6 +32,7 @@ export interface ArrivalEstimate {
   stop: string;
   etaMin: number;
   meters: number;
+  predicted: boolean; // true = the bus's own feed prediction; false = straight-line guess
 }
 
 export interface ArrivalResult {
@@ -75,7 +76,13 @@ export function estimateArrivals(stopInput: unknown, routeInput?: unknown): Arri
     if (!nearest) continue;
     const predicted = predictedEtaMin(vehicles, stop);
     if (predicted !== null) anyPredicted = true;
-    estimates.push({ route: code, stop: stop.name, etaMin: predicted ?? nearest.etaMin, meters: nearest.meters });
+    estimates.push({
+      route: code,
+      stop: stop.name,
+      etaMin: predicted ?? nearest.etaMin,
+      meters: nearest.meters,
+      predicted: predicted !== null,
+    });
   }
   estimates.sort((a, b) => a.etaMin - b.etaMin);
   const live = anyPredicted && source === 'live';
