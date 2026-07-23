@@ -20,7 +20,14 @@ function ModeCard({ icon, min, label, sub, featured = false, fastest = false }) 
       <div className="mt-1 font-mono text-xl font-bold text-ink">{min}</div>
       <div className="text-[12px] font-bold text-ink-soft">{label}</div>
       <div className="text-[11px] text-muted">{sub}</div>
-      {fastest && <div className="mt-1 inline-block rounded-full bg-ok px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white">fastest</div>}
+      {fastest && (
+        <div
+          className="mt-1 inline-block rounded-full px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white"
+          style={{ backgroundColor: 'var(--ok-ink)' }} // white-on-ok fails AA; the ink variant passes
+        >
+          fastest
+        </div>
+      )}
     </div>
   );
 }

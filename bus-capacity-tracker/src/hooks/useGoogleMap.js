@@ -234,7 +234,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
                  <div style="font-size:12px;margin-top:2px">${nameFor(code)} <span style="color:#888">(${code})</span></div>
                  <div style="font-size:12px;margin-top:4px">${crowdingHtml(code)}</div>
                  ${downHtml}
-                 <div style="font-size:12px;color:#666;margin-top:5px" id="iw-eta">Checking next arrival&hellip;</div>
+                 <div style="font-size:12px;color:#666;margin-top:5px" id="iw-eta" aria-live="polite">Checking next arrival&hellip;</div>
                </div>`,
             );
             infoWindowRef.current.open(map, marker);
