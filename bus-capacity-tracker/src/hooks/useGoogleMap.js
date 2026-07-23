@@ -40,7 +40,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
     }
   });
   const [feedLive, setFeedLive] = useState(true);
-  const [vehicleSource, setVehicleSource] = useState('mock');
+  const [vehicleSource, setVehicleSource] = useState(null); // null = no data yet; never claim "simulated" before the first poll
   const [vehicles, setVehicles] = useState([]); // latest fetched positions (for the detail panel count)
   const [vehiclesLoaded, setVehiclesLoaded] = useState(false); // first poll landed ([] can then be truthful)
   // Routes with no bus predicting an upcoming stop (deadheads/none) — joined key, same value-stable
@@ -247,7 +247,9 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
                 if (!node) return;
                 const list = (d.estimates || []).slice(0, 3);
                 node.textContent = list.length
-                  ? `Next: ${list.map((e) => `${e.route} ${e.etaMin === 0 ? 'due' : `~${e.etaMin} min`}`).join(', ')}`
+                  ? `Next: ${list
+                      .map((e) => `${e.route} ${e.etaMin === 0 ? 'due' : `~${e.etaMin} min`}${e.predicted ? '' : ' (est)'}`)
+                      .join(', ')}`
                   : 'No buses nearby right now';
               })
               .catch(() => {});

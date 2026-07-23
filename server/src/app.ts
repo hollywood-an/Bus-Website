@@ -45,6 +45,15 @@ app.get('/api/routes/:code', (c) => {
   return c.json({ ...detail, ...status });
 });
 
+// Per-route service state (is anything actually running?) for views that don't poll vehicles —
+// the Crowding board must not render "no reports" as if an asleep route were fine.
+app.get('/api/service', (c) =>
+  c.json({
+    source: feed.vehicleSource(),
+    routes: feed.getRoutes().map((r) => ({ code: r.code, inService: feed.routeInService(r.code) })),
+  }),
+);
+
 app.get('/api/vehicles', (c) => {
   const status = feed.feedStatus();
   const route = c.req.query('route');
@@ -106,6 +115,13 @@ app.post('/api/reports', reportLimiter, async (c) => {
   // bypasses the agent and POSTs directly.
   const v = validateReport(body.kind, body.route, body.level);
   if (!v.ok) return c.json({ error: v.error }, 400);
+
+  // A route with no buses in passenger service can't be "down" — it's asleep. Rejecting here (the
+  // single write path) also covers the agent's confirm flow, so night riders can't paint an
+  // off-schedule route red.
+  if (v.kind === 'down' && !feed.routeInService(v.code)) {
+    return c.json({ error: 'route_not_in_service' }, 409);
+  }
 
   const reporterId = c.req.header('x-client-id') || clientIp(c);
   const store = getReportStore();

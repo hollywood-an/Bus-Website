@@ -60,6 +60,10 @@ export async function streamAgent({ messages, signal, onDelta, onEvent }) {
   }
   if (buffer) handleFrame(buffer);
 
-  if (pendingError && !text) throw pendingError;
+  if (pendingError) {
+    if (!text) throw pendingError; // nothing streamed — caller falls back to the offline responder
+    // The stream died AFTER partial text: don't present a truncated answer as complete (audit D8).
+    onEvent?.({ type: 'stream_error', message: pendingError.message });
+  }
   return text;
 }

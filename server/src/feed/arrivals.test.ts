@@ -29,6 +29,7 @@ describe('estimateArrivals', () => {
         expect(e.etaMin).toBeGreaterThanOrEqual(0); // 0 = due (real feed prediction)
         expect(e.meters).toBeGreaterThanOrEqual(0);
         expect(typeof e.stop).toBe('string');
+        expect(typeof e.predicted).toBe('boolean'); // guesses must be distinguishable from feed ETAs
       }
     }
   });

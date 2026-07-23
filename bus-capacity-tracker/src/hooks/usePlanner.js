@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { getClientId } from '../lib/clientId';
 
 // Owns the trip-planner state at App level so a planned trip (and the chosen mode) survives view
 // switches — App unmounts hidden views, so anything kept inside PlannerView would reset.
@@ -32,12 +33,17 @@ export function usePlanner() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/plan?from=${encodeURIComponent(fromValue)}&to=${encodeURIComponent(toValue)}`);
-      const data = await res.json();
+      const res = await fetch(`/api/plan?from=${encodeURIComponent(fromValue)}&to=${encodeURIComponent(toValue)}`, {
+        headers: { 'x-client-id': getClientId() }, // per-person rate limit, not per-campus-NAT
+      });
+      const data = await res.json().catch(() => ({}));
       if (seq !== seqRef.current) return; // a newer plan or prefill superseded this request
-      if (data.error === 'unresolved_from') setError(`Couldn't find "${fromValue}" near campus.`);
-      else if (data.error === 'unresolved_to') setError(`Couldn't find "${toValue}" near campus.`);
-      else if (data.error) setError('Could not plan that trip.');
+      // A rate limit is not a bad trip — saying "could not plan" sends people retyping good addresses.
+      if (res.status === 429) setError(`Busy right now — try again in ${Number(data.retryAfter) || 15}s.`);
+      else if (data.error === 'unresolved_from' || data.error === 'unresolved_to') {
+        const q = data.error === 'unresolved_from' ? fromValue : toValue;
+        setError(`Couldn't find "${q}" in the campus bus area (~3 mi around OSU). Try a building name or a nearby campus spot.`);
+      } else if (data.error) setError('Could not plan that trip.');
       else setTrip(data);
     } catch {
       if (seq === seqRef.current) setError('Planner is unavailable right now.');

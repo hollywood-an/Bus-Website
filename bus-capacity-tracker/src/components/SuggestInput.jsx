@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { getClientId } from '../lib/clientId';
 
 // Google-Maps-style typeahead over /api/suggest (curated campus spots first, then Places
 // autocomplete biased to campus). Suggestions are display strings: picking one fills the input
@@ -31,7 +32,7 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
     }
     const seq = ++seqRef.current;
     const t = setTimeout(() => {
-      fetch(`/api/suggest?q=${encodeURIComponent(q)}`)
+      fetch(`/api/suggest?q=${encodeURIComponent(q)}`, { headers: { 'x-client-id': getClientId() } })
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           if (seq !== seqRef.current || !d) return;

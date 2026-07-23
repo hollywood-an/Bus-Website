@@ -40,7 +40,9 @@ export async function suggestPlaces(query: unknown): Promise<Suggestion[]> {
         headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': KEY },
         body: JSON.stringify({
           input: q,
-          locationBias: {
+          // Hard restriction, not a bias: the planner rejects anything outside this circle, so
+          // offering it in the dropdown would be a guaranteed dead end (audit defect D3).
+          locationRestriction: {
             circle: { center: { latitude: OSU_CENTER.lat, longitude: OSU_CENTER.lng }, radius: OSU_RADIUS_M },
           },
         }),
