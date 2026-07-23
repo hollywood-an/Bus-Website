@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { getClientId } from '../lib/clientId';
 
 // Google-Maps-style typeahead over /api/suggest (curated campus spots first, then Places
@@ -11,6 +11,8 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [active, setActive] = useState(-1);
+  const uid = useId(); // wires the ARIA combobox pattern: input ↔ listbox ↔ active option (audit D7)
+  const listboxId = `${uid}-listbox`;
   const seqRef = useRef(0); // drops stale fetch responses
   const skipRef = useRef(false); // suppress the refetch caused by picking a suggestion
   const focusedRef = useRef(false); // only fetch/open while the user is actually in the field
@@ -88,6 +90,8 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
         role="combobox"
         aria-expanded={open}
         aria-autocomplete="list"
+        aria-controls={listboxId}
+        aria-activedescendant={open && active >= 0 ? `${uid}-opt-${active}` : undefined}
         aria-label={ariaLabel}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -103,14 +107,19 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
         placeholder={placeholder}
         className={className}
       />
+      {/* Screen readers hear the list arrive; sighted users see it. */}
+      <span className="sr-only" aria-live="polite">
+        {open ? `${items.length} suggestion${items.length === 1 ? '' : 's'} available` : ''}
+      </span>
       {open && (
         <ul
+          id={listboxId}
           role="listbox"
           aria-label={`${ariaLabel} suggestions`}
           className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--shadow-float)]"
         >
           {items.map((s, i) => (
-            <li key={`${s.source}-${s.main}-${i}`} role="option" aria-selected={i === active}>
+            <li key={`${s.source}-${s.main}-${i}`} id={`${uid}-opt-${i}`} role="option" aria-selected={i === active}>
               {/* mousedown (not click) so the pick beats the input's blur-close */}
               <button
                 type="button"

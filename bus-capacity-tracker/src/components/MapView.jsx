@@ -408,7 +408,7 @@ function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded,
                     </span>
                   ))}
                   {cap && (
-                    <span className="block text-[11px] font-bold" style={{ color: `var(--cap-${cap.level})` }}>
+                    <span className="block text-[11px] font-bold" style={{ color: `var(--cap-${cap.level}-ink)` }}>
                       {CAPACITY_LEVELS[cap.level]?.label}
                       {!cap.confident && <span className="font-normal text-muted"> (unconfirmed)</span>}
                     </span>

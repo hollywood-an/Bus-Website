@@ -5,7 +5,9 @@ import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
 import { timeAgo } from '../lib/format';
 
-const CAP_VARS = ['var(--cap-0)', 'var(--cap-1)', 'var(--cap-2)', 'var(--cap-3)', 'var(--cap-4)'];
+// -ink variants: the selected button puts WHITE text on this fill, which the bright ramp colors
+// fail at AA contrast (audit D7). The preview meter below still uses the bright ramp.
+const CAP_VARS = ['var(--cap-0-ink)', 'var(--cap-1-ink)', 'var(--cap-2-ink)', 'var(--cap-3-ink)', 'var(--cap-4-ink)'];
 const selectClass =
   'w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm font-semibold text-ink focus:border-scarlet focus:outline-none';
 
