@@ -38,8 +38,13 @@ export default function AiView({
         <p className="mt-1 text-sm text-muted">Ask for a route, crowding, or what to avoid. It plans trips and drives the map.</p>
       </div>
 
+      {/* role=log + polite live region: streamed answers and confirm cards are announced instead
+          of appearing silently (audit D7). */}
       <div
         ref={scrollRef}
+        role="log"
+        aria-live="polite"
+        aria-label="Conversation"
         onScroll={() => {
           const el = scrollRef.current;
           if (el) pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
