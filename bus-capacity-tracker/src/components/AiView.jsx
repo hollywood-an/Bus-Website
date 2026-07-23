@@ -29,8 +29,10 @@ export default function AiView({
     if (pinnedRef.current) el.scrollTop = el.scrollHeight;
   }, [chatMessages, waiting, pendingConfirm]);
 
+  // dvh, not vh: iOS Safari's 100vh is the collapsed-URL-bar height, which pushed the composer
+  // off-screen behind the tab bar (audit D4).
   return (
-    <section className="mx-auto flex h-[calc(100vh-11rem)] max-w-2xl flex-col md:h-[calc(100vh-3rem)]">
+    <section className="mx-auto flex h-[calc(100dvh-11rem)] max-w-2xl flex-col md:h-[calc(100dvh-3rem)]">
       <div className="mb-3">
         <h1 className="text-2xl">Assistant</h1>
         <p className="mt-1 text-sm text-muted">Ask for a route, crowding, or what to avoid. It plans trips and drives the map.</p>

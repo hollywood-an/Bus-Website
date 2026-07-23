@@ -84,6 +84,27 @@ describe('routes', () => {
     expect(typeof body.model).toBe('string');
   });
 
+  it('GET /api/service reports per-route in-service state', async () => {
+    const res = await app.request('/api/service');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { source: string; routes: Array<{ code: string; inService: boolean }> };
+    expect(body.source).toBe('mock'); // pinned in vitest config
+    expect(body.routes.length).toBeGreaterThanOrEqual(6);
+    // Mock buses always predict stops, so every fixture route is in service under test.
+    expect(body.routes.every((r) => r.inService === true)).toBe(true);
+  });
+
+  it('POST /api/reports accepts a down report for an in-service route (mock mode)', async () => {
+    // The out-of-service 409 guard can't fire in mock mode (always in service); this locks in the
+    // happy path so the guard never over-rejects.
+    const res = await app.request('/api/reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-client-id': 'test-client-guard' },
+      body: JSON.stringify({ kind: 'down', route: 'CC' }),
+    });
+    expect(res.status).toBe(200);
+  });
+
   it('POST /api/agent rejects empty message list', async () => {
     const res = await app.request('/api/agent', {
       method: 'POST',

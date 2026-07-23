@@ -1,16 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { CAPACITY_LEVELS } from '../data/capacity';
+import { getClientId } from '../lib/clientId';
 
 // Phase 1.6: crowdsourced reports are now server-owned and multi-user. This hook reads aggregates
 // from /api/reports (decay + the anti-poisoning dampener happen server-side) and submits via
 // POST /api/reports. Only personal state (points, theme) stays in localStorage; a cached snapshot
 // of the last good aggregates is kept there too as a read-only offline fallback.
 const REPORTS_POLL_MS = 20000;
-
-function makeClientId() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
-  return `c-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
 
 export function useReports() {
   const [routes, setRoutes] = useState([]); // [{ code, name, color }]
@@ -20,24 +16,16 @@ export function useReports() {
   const [notification, setNotification] = useState('');
   const [showReward, setShowReward] = useState(false);
   const [offline, setOffline] = useState(false);
-  const clientIdRef = useRef('');
+  const clientIdRef = useRef(getClientId()); // shared with plan/suggest so limits key per person
 
-  // Personal state + an anonymous client id (used for rate-limiting + distinct-reporter counting).
+  // Personal state.
   useEffect(() => {
     (async () => {
       try {
         const pts = await window.storage.get('user-points');
         if (pts?.value) setUserPoints(parseInt(pts.value));
-        const existing = await window.storage.get('client-id');
-        if (existing?.value) {
-          clientIdRef.current = existing.value;
-        } else {
-          const id = makeClientId();
-          await window.storage.set('client-id', id);
-          clientIdRef.current = id;
-        }
       } catch {
-        clientIdRef.current = makeClientId();
+        /* points just start at 0 */
       }
     })();
   }, []);
@@ -156,6 +144,7 @@ export function useReports() {
   const submitFailureMessage = (err) => {
     const status = Number(String(err?.message ?? '').replace('report_', ''));
     if (status === 429) return "You're reporting too often — give it a minute.";
+    if (status === 409) return "That route isn't running right now, so there's nothing to report down.";
     if (status >= 400 && status < 500) return "That report wasn't valid, so nothing was saved.";
     if (status >= 500) return "The server had a problem. Try again in a moment.";
     return "Couldn't reach the server (offline?). Try again.";

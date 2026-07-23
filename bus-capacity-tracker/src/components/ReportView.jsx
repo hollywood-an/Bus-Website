@@ -91,8 +91,12 @@ export default function ReportView({ routes, down, submitCapacityReport, submitB
       {/* down */}
       <div className="rounded-lg border border-line bg-surface p-4">
         <h2 className="flex items-center gap-2 text-base font-bold text-danger">
-          <AlertTriangle size={18} /> Route not running?
+          <AlertTriangle size={18} /> Bus down?
         </h2>
+        <p className="mt-1 text-[12px] leading-relaxed text-muted">
+          A route that&apos;s off for the night shows as &ldquo;Not in service&rdquo; on the map — report down only if a
+          scheduled bus never showed.
+        </p>
         <div className="mt-3 space-y-3">
           <select value={downRoute} onChange={(e) => setDownRoute(e.target.value)} className={selectClass} aria-label="Route to report down">
             <option value="">Select a route…</option>
