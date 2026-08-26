@@ -246,8 +246,8 @@ export default function PlannerView({ planner }) {
               sub={
                 trip.bus
                   ? trip.bus.waitMin > 0
-                    ? `~${trip.bus.waitMin}m wait · ${trip.bus.busMin}m ride` // the wait dominates the total — never hide it
-                    : `${trip.bus.busMin}m ride`
+                    ? `free · ~${trip.bus.waitMin}m wait · ${trip.bus.busMin}m ride` // the wait dominates the total — never hide it
+                    : `free · ${trip.bus.busMin}m ride`
                   : trip.busesInService === false
                     ? 'not running now'
                     : 'no good route'
@@ -255,7 +255,7 @@ export default function PlannerView({ planner }) {
               arrive={trip.bus ? trip.bus.totalMin : null}
               disabled={!trip.bus}
             />
-            <Mode id="scooter" icon={Zap} min={`${trip.scooterMin}`} label="Scooter" sub="Veo / Spin" arrive={trip.scooterMin} />
+            <Mode id="scooter" icon={Zap} min={`${trip.scooterMin}`} label="Scooter" sub="Veo / Spin · paid" arrive={trip.scooterMin} />
           </div>
 
           <TripMap geometry={geometry} mode={mode} showTabs={false} />

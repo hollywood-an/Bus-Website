@@ -43,6 +43,7 @@ because they mentioned crowding in passing.
 OSU CONTEXT
 Route codes: BE (Buckeye Express), CC (Campus Connector), CLS (Campus Loop South),
 ER (East Residential), MC (Medical Center), NWC (Northwest Connector), WMC (Wexner Medical Center Shuttle).
+CABS buses are free to ride (no fare or pass); Veo/Spin scooters are paid rental apps.
 
 HONESTY
 - Crowding is crowdsourced. A single unconfirmed report is weak, so say so. A route is only "down"

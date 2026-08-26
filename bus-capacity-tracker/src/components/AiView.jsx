@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import TripMap from './TripMap';
 
-const EXAMPLES = ['How do I get from Morrill to the Union?', 'Which bus is least crowded right now?', 'Is the Connector packed?'];
+const EXAMPLES = ['How do I get from Morrill to the Union?', 'Which bus is least crowded right now?', 'Is the Campus Connector crowded?'];
 
 export default function AiView({
   chatMessages,
