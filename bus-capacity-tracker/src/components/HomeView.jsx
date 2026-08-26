@@ -64,17 +64,27 @@ const chip = 'inline-flex min-h-11 items-center gap-1.5 rounded-full border bord
 export default function HomeView({ setView, prefillPlanner, askAssistant, routes = [] }) {
   const [trip, setTrip] = useState(null);
 
-  // Plan a real demo trip so the Assistant preview shows the actual, interactive map.
+  // Plan a real demo trip so the Assistant preview shows the actual, interactive map. 8s timeout:
+  // a spinner that never resolves is worse than admitting the preview is unavailable.
+  const [demoFailed, setDemoFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/plan?from=Morrill%20Tower&to=Ohio%20Union')
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    fetch('/api/plan?from=Morrill%20Tower&to=Ohio%20Union', { signal: controller.signal })
       .then((r) => r.json())
       .then((d) => {
-        if (!cancelled && d && !d.error) setTrip(d);
+        if (cancelled) return;
+        if (d && !d.error) setTrip(d);
+        else setDemoFailed(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setDemoFailed(true);
+      })
+      .finally(() => clearTimeout(timer));
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, []);
 
@@ -213,6 +223,16 @@ export default function HomeView({ setView, prefillPlanner, askAssistant, routes
           <div className="mt-2.5">
             {geometry ? (
               <TripMap geometry={geometry} defaultMode="bus" heightClass="h-[300px] sm:h-[360px]" />
+            ) : demoFailed ? (
+              <div className="grid h-[300px] w-full place-items-center rounded-lg border border-line bg-surface p-6 text-center">
+                <div>
+                  <p className="text-sm font-bold text-ink">Live preview unavailable</p>
+                  <p className="mt-1 text-[13px] text-muted">The planner itself still works.</p>
+                  <button onClick={() => goPlan('Morrill Tower', 'Ohio Union')} className={`${chip} mt-3`}>
+                    Open the planner <ArrowRight size={14} />
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="grid h-[300px] w-full place-items-center rounded-lg border border-line bg-surface">
                 <div className="h-7 w-7 animate-spin rounded-full border-2 border-line border-t-scarlet" />

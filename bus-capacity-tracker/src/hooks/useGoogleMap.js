@@ -43,9 +43,11 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
   const [vehicleSource, setVehicleSource] = useState(null); // null = no data yet; never claim "simulated" before the first poll
   const [vehicles, setVehicles] = useState([]); // latest fetched positions (for the detail panel count)
   const [vehiclesLoaded, setVehiclesLoaded] = useState(false); // first poll landed ([] can then be truthful)
+  const [vehiclesError, setVehiclesError] = useState(false); // first poll FAILED — show retrying copy, not eternal "checking…"
   // Routes with no bus predicting an upcoming stop (deadheads/none) — joined key, same value-stable
   // pattern as selectedKey, so the route-draw effect only re-fires when the set actually changes.
   const [outOfServiceKey, setOutOfServiceKey] = useState('');
+  const outOfServiceRef = useRef(new Set()); // same data, readable inside stale-closure callbacks (locateUser)
   const [highlightedStops, setHighlightStops] = useState([]); // stop ids the agent asked to emphasize
   const [locateError, setLocateError] = useState('');
 
@@ -107,26 +109,32 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
       .catch(() => setMapError(true));
   }, [view, mapLoaded]);
 
-  // 2) Fetch the route list from the server when entering the map view.
+  // 2) Fetch the route list from the server when entering the map view. Retries with backoff so a
+  //    single blip doesn't strand the map without route lines until the next view switch.
   useEffect(() => {
     if (view !== 'map') return;
     let cancelled = false;
-    fetch('/api/routes')
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return;
-        setRoutes(Array.isArray(d.routes) ? d.routes : []);
-        setFeedLive(Boolean(d.live));
-        setRoutesError(false);
-      })
-      .catch(() => {
-        if (!cancelled) {
+    let timer;
+    const attempt = (delays) => {
+      fetch('/api/routes')
+        .then((r) => r.json())
+        .then((d) => {
+          if (cancelled) return;
+          setRoutes(Array.isArray(d.routes) ? d.routes : []);
+          setFeedLive(Boolean(d.live));
+          setRoutesError(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
           setFeedLive(false);
           setRoutesError(true);
-        }
-      });
+          if (delays.length > 0) timer = setTimeout(() => attempt(delays.slice(1)), delays[0]);
+        });
+    };
+    attempt([10_000, 30_000]);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [view]);
 
@@ -252,7 +260,11 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
                       .join(', ')}`
                   : 'No buses nearby right now';
               })
-              .catch(() => {});
+              .catch(() => {
+                if (token !== popupTokenRef.current) return;
+                const node = document.getElementById('iw-eta');
+                if (node) node.textContent = 'Arrival times unavailable right now.';
+              });
           });
           keep(marker);
           bounds.extend(position);
@@ -284,19 +296,23 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
       const d = await fetch('/api/vehicles')
         .then((r) => r.json())
         .catch(() => null);
-      if (cancelled || !d) return;
+      if (cancelled) return;
+      if (!d) {
+        setVehiclesError(true); // interval keeps retrying; the board says so instead of "checking…"
+        return;
+      }
+      setVehiclesError(false);
       if (d.source) setVehicleSource(d.source);
       const list = Array.isArray(d.vehicles) ? d.vehicles : [];
       setVehicles(list);
       setVehiclesLoaded(true);
       const predicting = new Set(list.filter((v) => v.nextStops?.length > 0).map((v) => v.route));
-      setOutOfServiceKey(
-        routes
-          .map((r) => r.code)
-          .filter((c) => !predicting.has(c))
-          .sort()
-          .join('|'),
-      );
+      const outCodes = routes
+        .map((r) => r.code)
+        .filter((c) => !predicting.has(c))
+        .sort();
+      outOfServiceRef.current = new Set(outCodes);
+      setOutOfServiceKey(outCodes.join('|'));
     };
 
     poll();
@@ -389,14 +405,21 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
           icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: USER_DOT, fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 },
         });
 
-        // Nearest stop across whatever route detail is currently loaded.
+        // Nearest stop, preferring routes with buses actually in service — pointing a night rider
+        // at a stop nothing will visit for hours is worse than a slightly longer walk. Falls back
+        // to any stop (flagged in the popup) when nothing is running.
+        const outSet = outOfServiceRef.current;
         let nearest = null;
-        for (const detail of detailCacheRef.current.values()) {
+        let nearestAny = null;
+        for (const [code, detail] of detailCacheRef.current.entries()) {
+          const inService = !outSet.has(code);
           for (const stop of detail.stops || []) {
             const m = haversineMeters(here.lat, here.lng, stop.latitude, stop.longitude);
-            if (!nearest || m < nearest.m) nearest = { stop, m };
+            if (!nearestAny || m < nearestAny.m) nearestAny = { stop, m, inService };
+            if (inService && (!nearest || m < nearest.m)) nearest = { stop, m, inService };
           }
         }
+        if (!nearest) nearest = nearestAny;
 
         const bounds = new window.google.maps.LatLngBounds();
         bounds.extend(here);
@@ -408,7 +431,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
             infoWindowRef.current.setContent(
               `<div style="padding:6px 8px;font-family:system-ui,sans-serif;line-height:1.45">
                  <strong>${nearest.stop.name}</strong>
-                 <div style="font-size:13px;color:#666;margin-top:2px">Nearest stop, ${Math.round(nearest.m)} m away</div>
+                 <div style="font-size:13px;color:#666;margin-top:2px">Nearest stop, ${Math.round(nearest.m)} m away${nearest.inService ? '' : ' — no buses currently serve it'}</div>
                </div>`,
             );
             infoWindowRef.current.setPosition({ lat: nearest.stop.latitude, lng: nearest.stop.longitude });
@@ -435,6 +458,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
     vehicleSource,
     vehicles,
     vehiclesLoaded,
+    vehiclesError,
     setHighlightStops,
     locateUser,
     locateError,

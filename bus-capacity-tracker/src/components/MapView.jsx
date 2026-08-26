@@ -19,6 +19,7 @@ export default function MapView({
   vehicleSource,
   vehicles = [],
   vehiclesLoaded = false,
+  vehiclesError = false,
   capacity = [],
   down = [],
   locateUser,
@@ -164,6 +165,7 @@ export default function MapView({
               capByCode={capByCode}
               downByCode={downByCode}
               vehiclesLoaded={vehiclesLoaded}
+              vehiclesError={vehiclesError}
               onToggle={toggleRoute}
             />
           )}
@@ -351,7 +353,7 @@ function CompactRouteCard({ route, cap, down, routeVehicles = [], vehicleSource 
 // Live per-route service board: the empty-selection panel leads with what's actually running —
 // real statuses (down-report > not-in-service > running) and the soonest next stop with a real
 // feed ETA. Rows toggle the route into the map selection, so the board doubles as a navigator.
-function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded, onToggle }) {
+function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded, vehiclesError = false, onToggle }) {
   const rows = routes.map((r) => {
     const routeVehicles = vehicles.filter((v) => v.route === r.code);
     const inService = anyInService(routeVehicles);
@@ -381,12 +383,16 @@ function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded,
     <div className="space-y-4 text-sm">
       <div>
         <h2 className="text-base font-bold">Service right now</h2>
-        {vehiclesLoaded && (
+        {vehiclesLoaded ? (
           <p className="mt-0.5 text-[12px] text-muted">
             <span className="font-mono font-bold text-ink-soft">{running}</span> of{' '}
             <span className="font-mono font-bold text-ink-soft">{routes.length}</span> routes running
           </p>
-        )}
+        ) : vehiclesError ? (
+          <p className="mt-0.5 text-[12px] font-semibold" style={{ color: 'var(--warn-ink)' }}>
+            Can&apos;t reach the live feed — retrying.
+          </p>
+        ) : null}
       </div>
 
       <ul className="-mx-1.5 space-y-0.5">
@@ -408,7 +414,7 @@ function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded,
                     {status.label}
                   </span>
                 ) : (
-                  <span className="shrink-0 text-[11px] text-muted">checking…</span>
+                  <span className="shrink-0 text-[11px] text-muted">{vehiclesError ? '—' : 'checking…'}</span>
                 )}
               </span>
               {vehiclesLoaded && inService && busStops.length > 0 && (
