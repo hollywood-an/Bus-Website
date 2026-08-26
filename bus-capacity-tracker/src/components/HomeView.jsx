@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigation, Bot, Map, Megaphone, Gauge, Footprints, Bus, Zap, ArrowRight } from 'lucide-react';
+import { Navigation, Bot, Map, Megaphone, Gauge, Footprints, Bus, Zap, ArrowRight, Ticket } from 'lucide-react';
 import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
 import TripMap from './TripMap';
@@ -61,7 +61,7 @@ const primaryBtn = 'inline-flex min-h-11 items-center justify-center gap-2 round
 const ghostBtn = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-bold text-ink-soft transition-colors hover:bg-surface-2';
 const chip = 'inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-ink-soft transition-colors hover:border-scarlet hover:text-scarlet-ink';
 
-export default function HomeView({ setView, prefillPlanner, askAssistant, routes = [] }) {
+export default function HomeView({ setView, prefillPlanner, askAssistant, openMapRoute = () => {}, routes = [] }) {
   const [trip, setTrip] = useState(null);
 
   // Plan a real demo trip so the Assistant preview shows the actual, interactive map. 8s timeout:
@@ -135,8 +135,18 @@ export default function HomeView({ setView, prefillPlanner, askAssistant, routes
         {routes.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 border-t border-line bg-surface-2 px-6 py-3">
             <span className="mr-1 text-[12px] font-semibold text-muted">Routes:</span>
+            {/* Code + name, tap-through to the map: a week-3 freshman's "what is CLS??" gets
+                answered on the first screen instead of two views deep. */}
             {routes.map((r) => (
-              <RouteChip key={r.code} code={r.code} color={r.color} />
+              <button
+                key={r.code}
+                onClick={() => openMapRoute(r.code)}
+                title={`See ${r.name} on the map`}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-1.5 text-[12px] font-semibold text-ink-soft transition-colors hover:bg-surface hover:text-ink"
+              >
+                <RouteChip code={r.code} color={r.color} />
+                <span>{r.name}</span>
+              </button>
             ))}
           </div>
         )}
@@ -184,7 +194,7 @@ export default function HomeView({ setView, prefillPlanner, askAssistant, routes
               sub={trip ? (trip.bus ? trip.bus.board.name : 'not running now') : ' '}
               fastest={trip?.fastest === 'bus'}
             />
-            <ModeCard icon={Zap} min={trip ? trip.scooterMin : '—'} label="Scooter" sub="Veo / Spin" fastest={trip?.fastest === 'scooter'} />
+            <ModeCard icon={Zap} min={trip ? trip.scooterMin : '—'} label="Scooter" sub="Veo / Spin · paid" fastest={trip?.fastest === 'scooter'} />
           </div>
         </div>
       </div>
@@ -207,7 +217,7 @@ export default function HomeView({ setView, prefillPlanner, askAssistant, routes
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          {['How do I get from Morrill to the Union?', 'Which bus is least crowded?', 'Is the Connector packed?'].map((q) => (
+          {['How do I get from Morrill to the Union?', 'Which bus is least crowded?', 'Is the Campus Connector crowded?'].map((q) => (
             <button key={q} onClick={() => goAssistant(q)} className={chip}>
               {q}
             </button>
@@ -271,7 +281,13 @@ export default function HomeView({ setView, prefillPlanner, askAssistant, routes
       {/* Good to know */}
       <div className="animate-rise rounded-xl border border-line bg-surface-2 p-5" style={{ animationDelay: '280ms' }}>
         <h2 className="text-lg">Good to know</h2>
-        <div className="mt-3 grid gap-4 sm:grid-cols-3">
+        <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <div className="flex items-center gap-1.5 text-[13px] font-bold text-ink-soft">
+              <Ticket size={15} className="text-scarlet-ink" /> Free to ride
+            </div>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-muted">CABS buses cost nothing — no pass or fare needed.</p>
+          </div>
           <div>
             <div className="flex items-center gap-1.5 text-[13px] font-bold text-ink-soft">
               <Gauge size={15} className="text-scarlet-ink" /> Crowdsourced crowding

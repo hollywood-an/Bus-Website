@@ -114,6 +114,10 @@ export default function BusCapacityTracker() {
               setView={setView}
               prefillPlanner={planner.prefill}
               askAssistant={chat.sendMessage}
+              openMapRoute={(code) => {
+                map.setSelectedRoutes([code]);
+                setView('map');
+              }}
               routes={reports.routes}
             />
           )}
