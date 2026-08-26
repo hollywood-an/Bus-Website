@@ -4,6 +4,7 @@ import TripMap from './TripMap';
 import RouteChip from './RouteChip';
 import SuggestInput from './SuggestInput';
 import { tripGeometry } from '../lib/tripGeometry';
+import { fmtArrive } from '../lib/format';
 import { loadMaps } from '../lib/loadMaps';
 
 // meters -> imperial, the way a US transit app shows it (feet under ~0.1 mi, else miles).
@@ -31,7 +32,7 @@ function StepList({ steps, className = 'max-h-72' }) {
             <Icon size={16} className="mt-0.5 shrink-0 text-ink-soft" />
             <div className="min-w-0 flex-1">
               <div className="text-sm text-ink">{s.text}</div>
-              {s.meters ? <div className="mt-0.5 font-mono text-[11px] text-muted">{fmtDist(s.meters)}</div> : null}
+              {s.meters ? <div className="mt-0.5 font-mono text-[13px] text-muted">{fmtDist(s.meters)}</div> : null}
             </div>
           </li>
         );
@@ -104,13 +105,13 @@ function BusItinerary({ trip }) {
         <div className="flex flex-wrap items-center gap-1.5 font-bold text-ink">
           Board <RouteChip code={b.routeCode} color={b.routeColor} /> {b.routeName}
         </div>
-        <div className="mt-0.5 font-mono text-[11px] text-muted">
-          {b.waitMin > 0 ? `wait ~${b.waitMin} min at the stop · ` : ''}ride ~{b.busMin} min · {b.stops} stop{b.stops === 1 ? '' : 's'} · Stop {b.board.id}
+        {/* stops+1: "0 stops" read as broken data; raw stop ids dropped — the stop NAME is the row title. */}
+        <div className="mt-0.5 font-mono text-[13px] text-muted">
+          {b.waitMin > 0 ? `wait ~${b.waitMin} min at the stop · ` : ''}ride {b.stops + 1} stop{b.stops + 1 === 1 ? '' : 's'} (~{b.busMin} min) · board ~{fmtArrive(b.walkToBoardMin + b.waitMin)}
         </div>
       </TimelineRow>
       <TimelineRow marker={ring} connector="var(--line-2)">
         <div className="font-bold text-ink">Get off at {b.alight.name}</div>
-        <div className="mt-0.5 font-mono text-[11px] text-muted">Stop {b.alight.id}</div>
       </TimelineRow>
       <TimelineRow marker={foot} last>
         <span className="text-ink-soft">
@@ -135,7 +136,7 @@ export default function PlannerView({ planner }) {
 
   const inputClass = 'w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm font-semibold text-ink placeholder:font-normal placeholder:text-muted focus:border-scarlet focus:outline-none';
 
-  const Mode = ({ id, icon, min, label, sub, disabled = false }) => {
+  const Mode = ({ id, icon, min, label, sub, arrive = null, disabled = false }) => {
     const Icon = icon;
     const active = mode === id;
     return (
@@ -149,9 +150,13 @@ export default function PlannerView({ planner }) {
         } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-surface`}
       >
         <Icon size={18} className={`mx-auto ${active ? 'text-scarlet-ink' : 'text-ink-soft'}`} />
-        <div className="mt-1.5 font-mono text-xl font-bold text-ink">{min}</div>
+        <div className="mt-1.5 font-mono text-xl font-bold text-ink">
+          {min}
+          {min !== '—' && <span className="ml-1 text-[13px] font-semibold text-ink-soft">min</span>}
+        </div>
         <div className="text-xs font-bold text-ink-soft">{label}</div>
         <div className="text-[11px] text-muted">{sub}</div>
+        {arrive != null && <div className="mt-0.5 font-mono text-[13px] font-semibold text-ink-soft">arrive ~{fmtArrive(arrive)}</div>}
       </button>
     );
   };
@@ -232,16 +237,25 @@ export default function PlannerView({ planner }) {
           </div>
 
           <div className="grid grid-cols-3 gap-2.5">
-            <Mode id="walk" icon={Footprints} min={`${trip.walkMin}`} label="Walk" sub="free" />
+            <Mode id="walk" icon={Footprints} min={`${trip.walkMin}`} label="Walk" sub="free" arrive={trip.walkMin} />
             <Mode
               id="bus"
               icon={Bus}
               min={trip.bus ? `${trip.bus.totalMin}` : '—'}
               label={trip.bus ? `Bus · ${trip.bus.routeCode}` : 'Bus'}
-              sub={trip.bus ? `${trip.bus.busMin}m on board` : trip.busesInService === false ? 'not running now' : 'no good route'}
+              sub={
+                trip.bus
+                  ? trip.bus.waitMin > 0
+                    ? `~${trip.bus.waitMin}m wait · ${trip.bus.busMin}m ride` // the wait dominates the total — never hide it
+                    : `${trip.bus.busMin}m ride`
+                  : trip.busesInService === false
+                    ? 'not running now'
+                    : 'no good route'
+              }
+              arrive={trip.bus ? trip.bus.totalMin : null}
               disabled={!trip.bus}
             />
-            <Mode id="scooter" icon={Zap} min={`${trip.scooterMin}`} label="Scooter" sub="Veo / Spin" />
+            <Mode id="scooter" icon={Zap} min={`${trip.scooterMin}`} label="Scooter" sub="Veo / Spin" arrive={trip.scooterMin} />
           </div>
 
           <TripMap geometry={geometry} mode={mode} showTabs={false} />

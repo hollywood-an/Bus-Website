@@ -48,7 +48,7 @@ export default function ReportView({ routes, down, submitCapacityReport, submitB
           <Megaphone size={18} className="text-scarlet-ink" /> How full is it?
         </h2>
         <div className="mt-3 space-y-3">
-          <select value={capRoute} onChange={(e) => setCapRoute(e.target.value)} className={selectClass} aria-label="Route to report capacity">
+          <select value={capRoute} onChange={(e) => setCapRoute(e.target.value)} className={selectClass} aria-label="Route to report crowding">
             <option value="">Select a route…</option>
             {routes.map((r) => (
               <option key={r.code} value={r.code}>{r.name} ({r.code})</option>

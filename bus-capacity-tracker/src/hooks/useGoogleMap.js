@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { loadMaps } from '../lib/loadMaps';
 import { CAPACITY_LEVELS } from '../data/capacity';
-import { timeAgo } from '../lib/format';
+import { timeAgo, fmtEta } from '../lib/format';
 
 // Drives the campus map from the server feed (Phase 1.5). Route list, stops, and polylines come
 // from /api/routes[/:code]; vehicles from /api/vehicles (live or mock, server's choice). Crowding +
@@ -231,10 +231,10 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
             infoWindowRef.current.setContent(
               `<div style="padding:6px 8px;font-family:system-ui,sans-serif;min-width:170px;line-height:1.45">
                  <strong>${stop.name}</strong>
-                 <div style="font-size:12px;margin-top:2px">${nameFor(code)} <span style="color:#888">(${code})</span></div>
-                 <div style="font-size:12px;margin-top:4px">${crowdingHtml(code)}</div>
+                 <div style="font-size:13px;margin-top:2px">${nameFor(code)} <span style="color:#888">(${code})</span></div>
+                 <div style="font-size:13px;margin-top:4px">${crowdingHtml(code)}</div>
                  ${downHtml}
-                 <div style="font-size:12px;color:#666;margin-top:5px" id="iw-eta" aria-live="polite">Checking next arrival&hellip;</div>
+                 <div style="font-size:13px;color:#666;margin-top:5px" id="iw-eta" aria-live="polite">Checking next arrival&hellip;</div>
                </div>`,
             );
             infoWindowRef.current.open(map, marker);
@@ -248,7 +248,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
                 const list = (d.estimates || []).slice(0, 3);
                 node.textContent = list.length
                   ? `Next: ${list
-                      .map((e) => `${e.route} ${e.etaMin === 0 ? 'due' : `~${e.etaMin} min`}${e.predicted ? '' : ' (est)'}`)
+                      .map((e) => `${e.route} ${fmtEta(e.etaMin)}${e.predicted ? '' : ' (est)'}`)
                       .join(', ')}`
                   : 'No buses nearby right now';
               })
@@ -339,13 +339,13 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
           const dest = v.destination ? ` to ${v.destination}` : '';
           const late = v.delayed ? '<div style="color:var(--warn);font-weight:600;margin-top:3px">Running late</div>' : '';
           const next = v.nextStops?.length
-            ? `<div style="font-size:12px;color:#666;margin-top:4px">Next: ${v.nextStops[0].name} ${v.nextStops[0].etaMin === 0 ? 'now' : `~${v.nextStops[0].etaMin} min`}</div>`
-            : '<div style="font-size:12px;color:#666;margin-top:4px">Not in passenger service</div>';
+            ? `<div style="font-size:13px;color:#666;margin-top:4px">Next: ${v.nextStops[0].name} ${fmtEta(v.nextStops[0].etaMin)}</div>`
+            : '<div style="font-size:13px;color:#666;margin-top:4px">Not in passenger service</div>';
           infoWindowRef.current.setContent(
             `<div style="padding:6px 8px;font-family:system-ui,sans-serif;min-width:150px;line-height:1.45">
                <strong>${nameFor(v.route)}</strong> <span style="color:#888">(${v.route})</span>
-               <div style="font-size:12px;margin-top:2px">Bus${dest}</div>
-               <div style="font-size:12px;margin-top:4px">${crowdingHtml(v.route)}</div>
+               <div style="font-size:13px;margin-top:2px">Bus${dest}</div>
+               <div style="font-size:13px;margin-top:4px">${crowdingHtml(v.route)}</div>
                ${next}
                ${late}
              </div>`,
@@ -408,7 +408,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
             infoWindowRef.current.setContent(
               `<div style="padding:6px 8px;font-family:system-ui,sans-serif;line-height:1.45">
                  <strong>${nearest.stop.name}</strong>
-                 <div style="font-size:12px;color:#666;margin-top:2px">Nearest stop, ${Math.round(nearest.m)} m away</div>
+                 <div style="font-size:13px;color:#666;margin-top:2px">Nearest stop, ${Math.round(nearest.m)} m away</div>
                </div>`,
             );
             infoWindowRef.current.setPosition({ lat: nearest.stop.latitude, lng: nearest.stop.longitude });

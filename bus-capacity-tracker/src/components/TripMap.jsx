@@ -159,10 +159,10 @@ export default function TripMap({ geometry, mode: modeProp, onModeChange, defaul
             >
               <Icon size={15} />
               {MODE_META[m].label}
-              <span className="font-mono">{minFor(m)}m</span>
+              <span className="font-mono text-[13px]">{minFor(m)}m</span>
               {fastest && (
                 <span
-                  className="rounded-full px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white"
+                  className="rounded-full px-2 py-px text-[10px] font-bold uppercase tracking-wide text-white"
                   style={{ backgroundColor: 'var(--ok-ink)' }} // AA: white text needs the darker ink fill
                 >
                   fast

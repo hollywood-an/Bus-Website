@@ -14,7 +14,7 @@ export default function Header({ compact = false, onHome }) {
       />
       <div className="text-left leading-tight">
         <div className="font-extrabold tracking-tight text-ink">Buckeye Transit</div>
-        {!compact && <div className="text-[11px] text-muted">Live campus bus + crowd reports</div>}
+        {!compact && <div className="text-[11px] text-muted">Live campus buses + crowding reports</div>}
       </div>
     </>
   );
