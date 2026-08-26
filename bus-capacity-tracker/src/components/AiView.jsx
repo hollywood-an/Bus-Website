@@ -114,10 +114,10 @@ export default function AiView({
             <span className="font-mono text-xs text-muted">+{pendingConfirm.args.points}</span>
           </p>
           <div className="mt-2 flex gap-2">
-            <button onClick={confirmPending} className="rounded-lg bg-scarlet px-3 py-1.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
+            <button onClick={confirmPending} className="min-h-11 rounded-lg bg-scarlet px-3 py-1.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
               Confirm &amp; submit
             </button>
-            <button onClick={cancelPending} className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-semibold text-ink-soft transition-colors hover:bg-surface-2">
+            <button onClick={cancelPending} className="min-h-11 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-semibold text-ink-soft transition-colors hover:bg-surface-2">
               Cancel
             </button>
           </div>

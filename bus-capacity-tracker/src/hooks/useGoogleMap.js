@@ -215,7 +215,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
             zIndex: isHighlighted ? 600 : undefined,
             icon: {
               path: window.google.maps.SymbolPath.CIRCLE,
-              scale: isHighlighted ? 11 : 6,
+              scale: isHighlighted ? 12 : 8, // wider thumb target — 6px dots were a touch lottery
               fillColor: color,
               fillOpacity: 1,
               strokeColor: isHighlighted ? '#111111' : '#ffffff',
