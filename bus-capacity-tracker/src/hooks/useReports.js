@@ -30,17 +30,26 @@ export function useReports() {
     })();
   }, []);
 
-  // Route list (codes + names + colors) for dropdowns and code↔name mapping.
+  // Route list (codes + names + colors) for dropdowns and code↔name mapping. Retries with backoff:
+  // one blip here used to empty Report, Crowding, and the Home chips for the whole session.
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/routes')
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setRoutes(Array.isArray(d.routes) ? d.routes : []);
-      })
-      .catch(() => {});
+    let timer;
+    const attempt = (delays) => {
+      fetch('/api/routes')
+        .then((r) => r.json())
+        .then((d) => {
+          if (!cancelled) setRoutes(Array.isArray(d.routes) ? d.routes : []);
+        })
+        .catch(() => {
+          if (cancelled || delays.length === 0) return;
+          timer = setTimeout(() => attempt(delays.slice(1)), delays[0]);
+        });
+    };
+    attempt([10_000, 30_000]);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, []);
 
