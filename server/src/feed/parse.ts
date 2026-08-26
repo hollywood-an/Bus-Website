@@ -9,6 +9,17 @@ const num = (v: unknown, d = 0): number => {
 const bool = (v: unknown): boolean => v === true;
 const isFiniteNum = (v: unknown): boolean => Number.isFinite(typeof v === 'number' ? v : Number(v));
 
+// The feed's display strings arrive mangled ("Uh Doan " — trailing space, broken acronym) and land
+// verbatim in the one instruction that matters most: "Get off at …". Normalize ONCE here so every
+// surface (planner itinerary, map popups, assistant answers) inherits clean names. Casing fixes
+// only — never invent words the feed didn't send.
+const ACRONYMS: Record<string, string> = { uh: 'UH', osu: 'OSU', rpac: 'RPAC' };
+export const cleanName = (v: unknown): string =>
+  str(v)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[A-Za-z]+/g, (w) => ACRONYMS[w.toLowerCase()] ?? w);
+
 export function parseRoutes(raw: unknown): RouteSummary[] {
   const routes = (raw as { data?: { routes?: unknown[] } })?.data?.routes ?? [];
   return (Array.isArray(routes) ? routes : [])
@@ -44,7 +55,7 @@ export function parseRouteDetail(code: string, raw: unknown): RouteDetail {
       const o = s as Record<string, unknown>;
       return {
         id: str(o.id),
-        name: str(o.name),
+        name: cleanName(o.name),
         service: str(o.service) || undefined,
         latitude: num(o.latitude),
         longitude: num(o.longitude),
@@ -67,7 +78,7 @@ export function parseVehicles(code: string, raw: unknown): Vehicle[] {
         heading: isFiniteNum(o.heading) ? num(o.heading) : undefined,
         speed: isFiniteNum(o.speed) ? num(o.speed) : undefined,
         delayed: typeof o.delayed === 'boolean' ? o.delayed : undefined,
-        destination: str(o.destination) || undefined,
+        destination: cleanName(o.destination) || undefined,
         distance: isFiniteNum(o.distance) ? num(o.distance) : undefined,
         nextStops: parseNextStops(o.predictions),
       };
@@ -85,7 +96,7 @@ function parseNextStops(raw: unknown): Vehicle['nextStops'] {
       const q = p as Record<string, unknown>;
       return {
         id: str(q.stopId) || undefined,
-        name: str(q.stopName),
+        name: cleanName(q.stopName),
         seconds: isFiniteNum(q.timeToArrivalInSeconds) ? num(q.timeToArrivalInSeconds) : NaN,
       };
     })

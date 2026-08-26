@@ -37,6 +37,31 @@ describe('parse (defensive coercion of an untrusted feed)', () => {
     expect(d.stops).toHaveLength(1);
   });
 
+  it('normalizes mangled feed display names once, at parse (audit: "Uh Doan ")', () => {
+    const d = parseRouteDetail('mc', {
+      data: {
+        patterns: [{ id: '1', length: 1, encodedPolyline: 'abc', direction: 'ib' }],
+        stops: [{ id: '37', name: '  Uh   Doan  ', latitude: 40, longitude: -83 }],
+      },
+    });
+    expect(d.stops[0]!.name).toBe('UH Doan'); // trimmed, collapsed, acronym-cased
+
+    const v = parseVehicles('mc', {
+      data: {
+        vehicles: [
+          {
+            latitude: 40,
+            longitude: -83,
+            destination: ' Uh Doan ',
+            predictions: [{ stopId: '37', stopName: 'Uh Doan ', timeToArrivalInSeconds: 120 }],
+          },
+        ],
+      },
+    });
+    expect(v[0]!.destination).toBe('UH Doan');
+    expect(v[0]!.nextStops![0]!.name).toBe('UH Doan');
+  });
+
   it('parseVehicles handles the empty summer array', () => {
     expect(parseVehicles('cc', { data: { vehicles: [] } })).toEqual([]);
   });
