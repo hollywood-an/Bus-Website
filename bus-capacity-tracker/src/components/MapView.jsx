@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { MapPinOff, LocateFixed, Navigation2, AlertTriangle } from 'lucide-react';
 import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
@@ -34,6 +34,18 @@ export default function MapView({
   const single = selectedRoutes.length === 1 ? selectedRoutes[0] : null;
   const toggleRoute = (code) =>
     setSelectedRoutes((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
+
+  // On phones the detail panel stacks below a 52vh map, so a chip tap looked like it did nothing —
+  // the answer rendered off-screen. Scroll it into view when a selection starts.
+  const asideRef = useRef(null);
+  const prevSelCount = useRef(selectedRoutes.length);
+  useEffect(() => {
+    const was = prevSelCount.current;
+    prevSelCount.current = selectedRoutes.length;
+    if (was === 0 && selectedRoutes.length > 0 && window.matchMedia('(max-width: 767px)').matches) {
+      asideRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [selectedRoutes.length]);
 
   // Stop count for a single selected route (server-cached; cheap).
   useEffect(() => {
@@ -82,7 +94,7 @@ export default function MapView({
         <button
           onClick={() => setSelectedRoutes([])}
           aria-pressed={selectedRoutes.length === 0}
-          className="rounded-full px-3 py-2 text-xs font-bold transition-colors"
+          className="min-h-11 rounded-full px-3 py-2 text-xs font-bold transition-colors"
           style={selectedRoutes.length === 0 ? { backgroundColor: 'var(--ink)', color: '#fff' } : { backgroundColor: 'var(--surface-2)', color: 'var(--ink-soft)' }}
         >
           All
@@ -95,7 +107,7 @@ export default function MapView({
               onClick={() => toggleRoute(r.code)}
               title={r.name}
               aria-pressed={active}
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide transition-colors"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide transition-colors"
               style={active ? { backgroundColor: r.color, color: '#fff' } : { backgroundColor: 'var(--surface-2)', color: 'var(--ink-soft)' }}
             >
               {r.code}
@@ -144,7 +156,7 @@ export default function MapView({
 
         {/* Detail panel (right on desktop, below on mobile): live service board for All, full detail
             for one route, a compact card per route when comparing several. */}
-        <aside className="mt-3 rounded-xl border border-line bg-surface p-4 md:mt-0 md:w-80 md:shrink-0 md:overflow-y-auto">
+        <aside ref={asideRef} className="mt-3 rounded-xl border border-line bg-surface p-4 md:mt-0 md:w-80 md:shrink-0 md:overflow-y-auto">
           {selectedRouteObjs.length === 0 && (
             <ServiceBoard
               routes={routes}

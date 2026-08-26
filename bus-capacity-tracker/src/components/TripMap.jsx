@@ -153,7 +153,7 @@ export default function TripMap({ geometry, mode: modeProp, onModeChange, defaul
               key={m}
               onClick={() => selectMode(m)}
               aria-pressed={active}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-bold transition-colors ${
+              className={`flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-bold transition-colors ${
                 active ? 'border-scarlet bg-scarlet-wash text-scarlet-ink' : 'border-line text-ink-soft hover:bg-surface-2'
               }`}
             >

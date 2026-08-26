@@ -64,7 +64,7 @@ export default function ReportView({ routes, down, submitCapacityReport, submitB
                   type="button"
                   onClick={() => setLevel(i)}
                   aria-pressed={active}
-                  className={`rounded-lg border px-1 py-2 text-[11px] font-bold leading-tight transition-colors ${
+                  className={`min-h-11 rounded-lg border px-1 py-2 text-[11px] font-bold leading-tight transition-colors ${
                     active ? 'border-transparent text-white' : 'border-line text-ink-soft hover:bg-surface-2'
                   }`}
                   style={active ? { backgroundColor: CAP_VARS[i] } : undefined}
