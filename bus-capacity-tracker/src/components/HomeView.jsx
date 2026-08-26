@@ -22,7 +22,7 @@ function ModeCard({ icon, min, label, sub, featured = false, fastest = false }) 
       <div className="text-[11px] text-muted">{sub}</div>
       {fastest && (
         <div
-          className="mt-1 inline-block rounded-full px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white"
+          className="mt-1 inline-block rounded-full px-2 py-px text-[10px] font-bold uppercase tracking-wide text-white"
           style={{ backgroundColor: 'var(--ok-ink)' }} // white-on-ok fails AA; the ink variant passes
         >
           fastest
@@ -107,7 +107,7 @@ export default function HomeView({ setView, prefillPlanner, askAssistant, routes
             </span>
             <h1 className="mt-3 text-3xl sm:text-[2.5rem]">Get across campus without guessing.</h1>
             <p className="mt-2.5 text-[15px] leading-relaxed text-muted">
-              Live buses, crowd-sourced fullness, and an assistant that plans your trip.
+              Live buses, rider-reported crowding, and an assistant that plans your trip.
             </p>
             <div className="mt-5 flex flex-wrap gap-2.5">
               <button onClick={() => go('planner')} className={primaryBtn}>

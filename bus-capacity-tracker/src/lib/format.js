@@ -1,3 +1,13 @@
+// ONE spelling for arrival estimates everywhere (the audit found five: Due/due/now/~N min/N min).
+export function fmtEta(etaMin) {
+  return etaMin === 0 ? 'due' : `~${etaMin} min`;
+}
+
+// Wall-clock arrival ("will I make my 2:10?" should never require mental math).
+export function fmtArrive(minFromNow) {
+  return new Date(Date.now() + minFromNow * 60_000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
 // Relative timestamp for report freshness ("reported 4 min ago") — small product-texture detail.
 export function timeAgo(ts) {
   if (!ts) return '';

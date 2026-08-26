@@ -4,7 +4,7 @@ import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
 import { CAPACITY_LEVELS } from '../data/capacity';
 import { statusFor } from '../lib/serviceStatus';
-import { timeAgo } from '../lib/format';
+import { timeAgo, fmtEta } from '../lib/format';
 
 // Map-forward, now with a detail panel: route lines + stops + buses on the left, and crowding / status /
 // arrivals on the right (below the map on mobile). Crowding + down come from useReports via App.
@@ -57,7 +57,7 @@ export default function MapView({
   return (
     <section>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl">Ohio State Campus Map</h1>
+        <h1 className="text-2xl">Campus map</h1>
         <div className="flex items-center gap-2 text-xs font-semibold">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1" style={{ color: feedLive ? 'var(--ok)' : 'var(--warn)' }}>
             <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: feedLive ? 'var(--ok)' : 'var(--warn)' }} />
@@ -209,7 +209,7 @@ function BusNextStops({ vehicle }) {
           {vehicle.nextStops.slice(0, 3).map((s, i) => (
             <li key={s.id ?? i} className="flex items-baseline justify-between gap-2 text-[12px] text-ink-soft">
               <span className="min-w-0 truncate">{s.name}</span>
-              <span className="shrink-0 font-mono text-[11px] text-muted">{s.etaMin === 0 ? 'Due' : `${s.etaMin} min`}</span>
+              <span className="shrink-0 font-mono text-[13px] text-muted">{fmtEta(s.etaMin)}</span>
             </li>
           ))}
         </ul>
@@ -404,11 +404,11 @@ function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded,
                   {busStops.map((s, i) => (
                     <span key={i} className="flex items-baseline justify-between gap-2 text-[12px] text-ink-soft">
                       <span className="min-w-0 truncate">→ {s.name}</span>
-                      <span className="shrink-0 font-mono text-[11px] font-bold">{s.etaMin === 0 ? 'Due' : `${s.etaMin} min`}</span>
+                      <span className="shrink-0 font-mono text-[13px] font-bold">{fmtEta(s.etaMin)}</span>
                     </span>
                   ))}
                   {cap && (
-                    <span className="block text-[11px] font-bold" style={{ color: `var(--cap-${cap.level}-ink)` }}>
+                    <span className="block text-[13px] font-bold" style={{ color: `var(--cap-${cap.level}-ink)` }}>
                       {CAPACITY_LEVELS[cap.level]?.label}
                       {!cap.confident && <span className="font-normal text-muted"> (unconfirmed)</span>}
                     </span>
@@ -436,7 +436,7 @@ function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded,
               <span key={i} className="h-2 flex-1 rounded-full" style={{ backgroundColor: `var(--cap-${i})` }} />
             ))}
           </div>
-          <div className="mt-0.5 flex justify-between text-[10px] text-muted">
+          <div className="mt-0.5 flex justify-between text-[11px] text-muted">
             <span>Empty</span>
             <span>Very full</span>
           </div>
