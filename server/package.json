@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Hono proxy that runs the OSU bus agent loop server-side (holds the Anthropic key).",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",

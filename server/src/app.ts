@@ -24,7 +24,7 @@ const runTurn = makeRunTurn(anthropic, MODEL, SYSTEM_PROMPT, TOOL_DEFS);
 export const app = new Hono();
 
 app.use('/api/*', cors({ origin: ALLOWED_ORIGIN, allowMethods: ['GET', 'POST', 'OPTIONS'] }));
-app.use('/api/agent', rateLimit({ windowMs: 60_000, max: 20 }));
+app.use('/api/agent', rateLimit({ windowMs: 60_000, max: 10 }));
 
 app.get('/api/health', (c) =>
   c.json({ ok: true, model: MODEL, hasKey: Boolean(process.env.ANTHROPIC_API_KEY), feed: feed.feedStatus() }),

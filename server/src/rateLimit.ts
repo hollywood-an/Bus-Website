@@ -1,10 +1,16 @@
 import type { Context, MiddlewareHandler } from 'hono';
 
-// Minimal in-memory fixed-window rate limiter, keyed by client IP.
+// Minimal in-memory fixed-window rate limiter, keyed by client IP (or an x-client-id when the
+// caller supplies one).
+//
+// DEPLOY ASSUMPTION: correct only on a single long-lived instance (the app runs on Railway, not
+// serverless) — the counters live in this process's memory. If this ever moves to horizontally
+// scaled or serverless functions, back it with a shared store (Redis/KV) or the limit is defeated.
 //
 // NOTE (documented honestly in SECURITY.md): per-IP limiting is weak on a shared campus NAT —
-// thousands of students can share an egress IP, so a window that's loose enough for them is loose
-// for an abuser too. This is a basic abuse dampener, not a real identity control.
+// thousands of students can share an egress IP, so a window loose enough for them is loose for an
+// abuser too. This is an abuse dampener, not an identity control; the real bill backstop is the
+// hard monthly spend cap set in the Anthropic console.
 interface Bucket {
   count: number;
   resetAt: number;
