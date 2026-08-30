@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { CAPACITY_LEVELS } from '../data/capacity';
 import { getClientId } from '../lib/clientId';
+import { apiUrl } from '../lib/api';
 
 // Phase 1.6: crowdsourced reports are now server-owned and multi-user. This hook reads aggregates
 // from /api/reports (decay + the anti-poisoning dampener happen server-side) and submits via
@@ -36,7 +37,7 @@ export function useReports() {
     let cancelled = false;
     let timer;
     const attempt = (delays) => {
-      fetch('/api/routes')
+      fetch(apiUrl('/api/routes'))
         .then((r) => r.json())
         .then((d) => {
           if (!cancelled) setRoutes(Array.isArray(d.routes) ? d.routes : []);
@@ -56,7 +57,7 @@ export function useReports() {
   // Poll the shared report aggregates; cache them for offline display.
   const loadReports = useCallback(async () => {
     try {
-      const d = await fetch('/api/reports').then((r) => r.json());
+      const d = await fetch(apiUrl('/api/reports')).then((r) => r.json());
       setCapacity(d.capacity ?? []);
       setDown(d.down ?? []);
       setOffline(false);
@@ -139,7 +140,7 @@ export function useReports() {
   };
 
   const postReport = async (payload) => {
-    const res = await fetch('/api/reports', {
+    const res = await fetch(apiUrl('/api/reports'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-client-id': clientIdRef.current },
       body: JSON.stringify(payload),

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { loadMaps } from '../lib/loadMaps';
 import { CAPACITY_LEVELS } from '../data/capacity';
 import { timeAgo, fmtEta } from '../lib/format';
+import { apiUrl } from '../lib/api';
 
 // Drives the campus map from the server feed (Phase 1.5). Route list, stops, and polylines come
 // from /api/routes[/:code]; vehicles from /api/vehicles (live or mock, server's choice). Crowding +
@@ -116,7 +117,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
     let cancelled = false;
     let timer;
     const attempt = (delays) => {
-      fetch('/api/routes')
+      fetch(apiUrl('/api/routes'))
         .then((r) => r.json())
         .then((d) => {
           if (cancelled) return;
@@ -169,7 +170,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
     (async () => {
       const detailFor = async (code) => {
         if (detailCacheRef.current.has(code)) return detailCacheRef.current.get(code);
-        const d = await fetch(`/api/routes/${code}`)
+        const d = await fetch(apiUrl(`/api/routes/${code}`))
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null);
         if (d && !d.error) {
@@ -246,7 +247,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
                </div>`,
             );
             infoWindowRef.current.open(map, marker);
-            const q = `/api/arrivals?stop=${encodeURIComponent(stop.name)}${sel.length > 0 ? `&route=${code}` : ''}`;
+            const q = apiUrl(`/api/arrivals?stop=${encodeURIComponent(stop.name)}${sel.length > 0 ? `&route=${code}` : ''}`);
             fetch(q)
               .then((r) => r.json())
               .then((d) => {
@@ -293,7 +294,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
     let cancelled = false;
 
     const poll = async () => {
-      const d = await fetch('/api/vehicles')
+      const d = await fetch(apiUrl('/api/vehicles'))
         .then((r) => r.json())
         .catch(() => null);
       if (cancelled) return;

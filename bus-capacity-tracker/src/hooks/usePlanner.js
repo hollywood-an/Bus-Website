@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { getClientId } from '../lib/clientId';
+import { apiUrl } from '../lib/api';
 
 // Owns the trip-planner state at App level so a planned trip (and the chosen mode) survives view
 // switches — App unmounts hidden views, so anything kept inside PlannerView would reset.
@@ -33,7 +34,7 @@ export function usePlanner() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/plan?from=${encodeURIComponent(fromValue)}&to=${encodeURIComponent(toValue)}`, {
+      const res = await fetch(apiUrl(`/api/plan?from=${encodeURIComponent(fromValue)}&to=${encodeURIComponent(toValue)}`), {
         headers: { 'x-client-id': getClientId() }, // per-person rate limit, not per-campus-NAT
       });
       const data = await res.json().catch(() => ({}));

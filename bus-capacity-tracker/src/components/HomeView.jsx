@@ -4,6 +4,7 @@ import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
 import TripMap from './TripMap';
 import { tripGeometry } from '../lib/tripGeometry';
+import { apiUrl } from '../lib/api';
 
 // The landing / how-to page (default view). Visual-forward: it shows the features instead of describing
 // them. The Assistant preview embeds the real, interactive TripMap (live data, clickable mode switcher),
@@ -71,7 +72,7 @@ export default function HomeView({ setView, prefillPlanner, askAssistant, openMa
     let cancelled = false;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
-    fetch('/api/plan?from=Morrill%20Tower&to=Ohio%20Union', { signal: controller.signal })
+    fetch(apiUrl('/api/plan?from=Morrill%20Tower&to=Ohio%20Union'), { signal: controller.signal })
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;

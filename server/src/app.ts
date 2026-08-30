@@ -23,7 +23,13 @@ const runTurn = makeRunTurn(anthropic, MODEL, SYSTEM_PROMPT, TOOL_DEFS);
 
 export const app = new Hono();
 
-app.use('/api/*', cors({ origin: ALLOWED_ORIGIN, allowMethods: ['GET', 'POST', 'OPTIONS'] }));
+// In prod the browser (Vercel origin) calls this backend (Railway origin) cross-origin, so the
+// allow-list must name the frontend origin AND permit the custom x-client-id header the client
+// sends (otherwise the preflight fails and plan/suggest/report/agent break).
+app.use(
+  '/api/*',
+  cors({ origin: ALLOWED_ORIGIN, allowMethods: ['GET', 'POST', 'OPTIONS'], allowHeaders: ['Content-Type', 'x-client-id'] }),
+);
 app.use('/api/agent', rateLimit({ windowMs: 60_000, max: 10 }));
 
 app.get('/api/health', (c) =>
