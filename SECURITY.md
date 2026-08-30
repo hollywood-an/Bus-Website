@@ -14,6 +14,7 @@ is untrusted, the proxy validates everything, and the model never writes to anyt
 | Surface | Control | Honest limitation |
 | --- | --- | --- |
 | Model / API keys | Server-side only, behind the proxy | None in the bundle; relies on `server/.env` staying server-side |
+| AI cost / bill run-up | Rate limit + a **hard monthly spend cap** in the Anthropic console | The cap is the true ceiling; the rate limit alone is IP-spoofable |
 | Report writes | Shared validator on both the endpoint and the agent tool | Anonymous; identity is a client-supplied id |
 | Report poisoning | Needs 2 distinct reporters to confirm + median aggregate | A coordinated 2-person pair can still flip a status |
 | Abuse / spam | Per-client in-memory rate limit | Weak on shared campus NAT; the key is spoofable |
@@ -81,25 +82,41 @@ attestation, which is out of scope.
 ## Rate limiting
 
 A minimal in-memory fixed-window limiter (`server/src/rateLimit.ts`) caps per-client request rates:
-agent 20/min (`app.ts:26`), report writes 15/min (`app.ts:65`), trip planning 30/min (`app.ts:71`, it
-hits Google). Over the limit returns `429` with `Retry-After`. Covered by `server/src/rateLimit.test.ts`.
+agent 10/min, report writes 15/min, trip planning 30/min (hits Google), suggest 60/min. Over the limit
+returns `429` with `Retry-After`. Covered by `server/src/rateLimit.test.ts`.
 
 **Limitation, stated plainly:** this is a basic abuse dampener, **not an identity control**. Thousands of
 OSU students share NAT'd egress IPs, so any window loose enough not to block a lecture hall letting out is
 also loose for an abuser. The keys are spoofable either way: the agent endpoint keys on client IP via the
-trusted `X-Forwarded-For` header (`server/src/app.ts:26` uses the default `clientIp`), while the report
-and plan endpoints key on the client-supplied `x-client-id` (falling back to that same IP). It exists to
-slow accidental floods and trivial spam, nothing stronger. The state is also in-memory, so it resets on
-restart and is per-instance (it does not coordinate across multiple server replicas).
+trusted `X-Forwarded-For` header, while the report and plan endpoints key on the client-supplied
+`x-client-id` (falling back to that same IP). The limiter is in-memory, so it is correct **only on a
+single long-lived instance** (the production backend runs on one Railway service, not serverless); it
+resets on restart and would be defeated across horizontally-scaled replicas without a shared store.
+
+## AI cost — the real backstop is a spend cap
+
+The concern behind a public AI endpoint is a bill run-up. Two layers:
+
+- **Per-request cost is bounded by design:** the default model is Claude Haiku (cheapest), each turn is
+  capped at `max_tokens: 1024`, the loop runs at most 8 tool round-trips, and history is capped at 12
+  turns × 4000 chars. So a single request is cheap; the only risk is *volume*.
+- **Volume is capped by a hard monthly spend limit** set in the Anthropic console (Billing → Usage
+  limits). This is the one control that *physically* cannot be exceeded regardless of any code path,
+  spoofed IP, or rotated client id — the rate limiter slows abuse, the spend cap ends it. Setting it is
+  a deploy prerequisite (operator checklist below). A bot challenge (e.g. Turnstile) on the agent
+  endpoint is the next step if abuse ever materializes; the spend cap makes it unnecessary to start.
 
 ## CORS and transport
 
-`/api/*` is locked to a single `ALLOWED_ORIGIN` (`server/src/app.ts:25`, default `http://localhost:5173`,
-set to the deployed client origin in production) with methods restricted to `GET`, `POST`, `OPTIONS`.
+`/api/*` is locked to a single `ALLOWED_ORIGIN` (default `http://localhost:5173`, set to the deployed
+frontend origin in production) with methods restricted to `GET`, `POST`, `OPTIONS` and request headers to
+`Content-Type` + `x-client-id`. In production the frontend (Vercel) and backend (Railway) are different
+origins, so the browser calls the backend cross-origin and this allow-list is what lets the real client
+through while rejecting others' browser origins.
 
 **Limitation:** CORS is a browser policy. It stops other *web origins* from using these endpoints in a
 user's browser; it does nothing against a script or curl. The real write protections are validation and
-rate limiting above.
+rate limiting above (and, for cost, the spend cap).
 
 ## Agent loop safety
 
@@ -126,16 +143,23 @@ limited). No stack traces or internals reach the client.
 
 ## Operator checklist (deployment)
 
-Code cannot enforce these; they are configured in the Google Cloud Console and the host:
+Code cannot enforce these; they are configured in the Google Cloud Console, the Anthropic console, and the
+hosts. Do these **before** making the repo public or sharing the live URL:
 
-- **Browser Maps key** (`VITE_GOOGLE_MAPS_API_KEY`): restrict by **HTTP referrer** to the deployed
-  origin, and by API to the **Maps JavaScript API** only.
-- **Server Maps key** (`GOOGLE_MAPS_SERVER_KEY`): restrict by **IP** to the server, and by API to
-  **Geocoding + Places + Directions** only. Do not referrer-restrict it (there is no referrer).
-- Set `ALLOWED_ORIGIN` to the real client origin.
+- **Rotate every key that ever touched git history.** An early commit included a real OpenAI key in
+  `bus-tracker-backend/.env` (the legacy Python backend, since deleted). The value is recoverable from
+  history until scrubbed, so it must be **revoked** at platform.openai.com and the history purged
+  (`git filter-repo --path bus-tracker-backend/.env --invert-paths`, then force-push) before publishing.
+  It's unused by the current code (which uses Anthropic), so revoking has no app impact.
+- **Anthropic monthly spend cap** (Billing → Usage limits): the hard ceiling on AI cost. Set it.
+- **Browser Maps key** (`VITE_GOOGLE_MAPS_API_KEY`): restrict by **HTTP referrer** to the deployed Vercel
+  origin (plus `localhost` for dev), and by API to the **Maps JavaScript API** only.
+- **Server Maps key** (`GOOGLE_MAPS_SERVER_KEY`): restrict by API to **Geocoding + Places + Routes** only;
+  add an **IP** restriction if the host exposes a static outbound IP (Railway may not — the key is
+  server-only and never bundled, so API-restriction alone is an acceptable posture).
+- **`ALLOWED_ORIGIN`** (Railway env) = the real Vercel frontend origin. **`VITE_API_BASE`** (Vercel env) =
+  the Railway backend origin. **`SEED_DEMO=false`** and **`REPORTS_DB=/data/reports.db`** (volume) in prod.
 - Keep `server/.env` out of version control (already gitignored) and out of the client build.
-- Revoke any key that has ever been committed or bundled, including the legacy `VITE_OPENAI_API_KEY` from
-  the original browser-side build (no longer used anywhere in the code).
 
 ## Out of scope
 

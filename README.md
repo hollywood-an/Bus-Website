@@ -105,9 +105,10 @@ campus geocoder and straight-line walks; no Anthropic key makes the assistant us
 ## Security
 
 The short version: no secrets in the browser, all writes validated server-side on a single shared path,
-anonymous reports hardened with a 2-reporter confirmation threshold and a median aggregate, and per-client
-rate limits documented honestly as a dampener (weak on shared campus NAT), not an identity control. Full
-threat model, including where each control stops, is in [`SECURITY.md`](./SECURITY.md).
+anonymous reports hardened with a 2-reporter confirmation threshold and a median aggregate, per-client
+rate limits documented honestly as a dampener (weak on shared campus NAT) not an identity control, and a
+hard Anthropic spend cap as the real ceiling on AI cost. Full threat model, including where each control
+stops, is in [`SECURITY.md`](./SECURITY.md).
 
 ## Honest scope
 
@@ -123,15 +124,31 @@ threat model, including where each control stops, is in [`SECURITY.md`](./SECURI
   (straight-line pruning first, then ~10–20 `computeRoutes` calls worst case per never-seen
   origin/destination pair, cached in-process per coord pair). With no Google key it degrades to
   straight-line estimates and straight dashed walk legs on the map.
-- **Persistence is SQLite.** Fine locally and for a single instance; a hosted KV or a volume is a
-  deploy-time upgrade. Bus times are estimates (along-route distance plus dwell), not the official ETA.
+- **Persistence is SQLite.** Fine for a single instance; in production it lives on a mounted volume
+  (`REPORTS_DB=/data/reports.db`) so reports survive redeploys. Bus times are estimates (along-route
+  distance plus dwell), not the official ETA.
 
-## Deployment (planned)
+## Deployment
 
-Not yet deployed. The intended split is client to a static host and server to a host with a persistent
-volume for SQLite (or a swap to a hosted KV). Before going live: restrict both Google keys in the Cloud
-Console (see the operator checklist in `SECURITY.md`), set `ALLOWED_ORIGIN` to the real client origin, and
-record a short demo of the agent acting and driving the map.
+Split by shape: the **frontend** (static Vite build) → **Vercel**; the **backend** (a long-lived Node
+process — background feed poller, in-memory cache + rate limiter, SQLite) → **Railway**. The browser
+calls the backend directly (`VITE_API_BASE`), keeping Vercel out of the assistant's SSE path.
+
+**Do the [operator checklist in `SECURITY.md`](./SECURITY.md#operator-checklist-deployment) first** —
+rotate the key that was in git history, set the Anthropic spend cap, restrict both Google keys.
+
+1. **Backend → Railway.** New project from this repo, root `server/`. Config in `server/railway.json`
+   (build `npm install`, start `npm start`, healthcheck `/api/health`). Attach a **volume mounted at
+   `/data`**. Set env: `ANTHROPIC_API_KEY`, `GOOGLE_MAPS_SERVER_KEY`, `REPORTS_DB=/data/reports.db`,
+   `SEED_DEMO=false`, `USE_MOCK_VEHICLES=false`, and `ALLOWED_ORIGIN=` (fill in after step 2). Copy the
+   service URL, e.g. `https://bus-agent.up.railway.app`.
+2. **Frontend → Vercel.** Import the repo, root `bus-capacity-tracker` (config in its `vercel.json`).
+   Set env `VITE_GOOGLE_MAPS_API_KEY` (the restricted browser key) and `VITE_API_BASE=` the Railway URL
+   from step 1. Deploy, then copy the Vercel URL.
+3. **Close the loop.** Put the Vercel URL into Railway's `ALLOWED_ORIGIN` and redeploy the backend; add
+   the Vercel domain to the browser Maps key's referrer allow-list.
+4. **Verify:** `curl https://<railway>/api/health` → ok; open the Vercel URL → Map/Plan work and the
+   **assistant streams**; confirm the Anthropic spend cap is active. Then flip the repo public.
 
 ## Tests
 
