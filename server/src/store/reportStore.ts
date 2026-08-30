@@ -1,4 +1,6 @@
 import Database from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { RouteCapacity, DownStatus, SubmitResult } from './types';
 
 // Decay windows carried over from the original client logic.
@@ -33,6 +35,9 @@ export class SqliteReportStore implements ReportStore {
   private db: Database.Database;
 
   constructor(path = process.env.REPORTS_DB ?? 'reports.db') {
+    // In prod REPORTS_DB points at a mounted volume (e.g. /data/reports.db) that may not exist on
+    // first boot — create the directory so the DB file can be opened. No-op for ':memory:' (tests).
+    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
     this.db.pragma('journal_mode = WAL');
     this.db.exec(`
