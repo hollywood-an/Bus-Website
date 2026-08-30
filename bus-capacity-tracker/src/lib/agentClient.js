@@ -1,3 +1,5 @@
+import { apiUrl } from './api';
+
 // Talks to the backend agent proxy (POST /api/agent) and streams the reply.
 //
 // The proxy sends Server-Sent Events, one JSON object per `data:` line:
@@ -10,7 +12,7 @@
 // Text chunks go to onDelta; everything else goes to onEvent. Returns the accumulated text, and
 // throws if the transport fails or an error arrives before any text (so the caller can fall back).
 export async function streamAgent({ messages, signal, onDelta, onEvent }) {
-  const res = await fetch('/api/agent', {
+  const res = await fetch(apiUrl('/api/agent'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages }),

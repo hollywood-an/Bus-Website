@@ -4,6 +4,7 @@ import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
 import { CAPACITY_LEVELS } from '../data/capacity';
 import { statusFor } from '../lib/serviceStatus';
+import { apiUrl } from '../lib/api';
 import { timeAgo, fmtEta } from '../lib/format';
 
 // Map-forward, now with a detail panel: route lines + stops + buses on the left, and crowding / status /
@@ -56,7 +57,7 @@ export default function MapView({
     }
     let cancelled = false;
     setStopCount(null);
-    fetch(`/api/routes/${single}`)
+    fetch(apiUrl(`/api/routes/${single}`))
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!cancelled && d && Array.isArray(d.stops)) setStopCount(d.stops.length);

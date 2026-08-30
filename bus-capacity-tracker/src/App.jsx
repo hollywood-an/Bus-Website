@@ -4,6 +4,7 @@ import { useReports } from './hooks/useReports';
 import { useGoogleMap } from './hooks/useGoogleMap';
 import { useChat } from './hooks/useChat';
 import { usePlanner } from './hooks/usePlanner';
+import { apiUrl } from './lib/api';
 import Header from './components/Header';
 import Nav from './components/Nav';
 import Toast from './components/Toast';
@@ -44,7 +45,7 @@ export default function BusCapacityTracker() {
     if (view !== 'check') return;
     let cancelled = false;
     const poll = async () => {
-      const d = await fetch('/api/service')
+      const d = await fetch(apiUrl('/api/service'))
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null);
       if (cancelled || !d) return;
