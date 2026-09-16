@@ -184,7 +184,37 @@ export default function TripMap({ geometry, mode: modeProp, onModeChange, defaul
           </div>
         </div>
       ) : (
-        <div ref={divRef} className={`w-full overflow-hidden rounded-lg border border-line ${heightClass}`} />
+        <div className="relative">
+          <div ref={divRef} className={`w-full overflow-hidden rounded-lg border border-line ${heightClass}`} />
+
+          {/* Scooter is the one recommendation the app can't fulfill itself — hand off to the apps that
+              unlock one, floated as the map's call to action. Real brand logos on white pills with each
+              company's color as a border + glow. Store page on phones (never a dead end), provider site
+              on desktop. Container ignores pointer events so the map still pans around the pills. */}
+          {mode === 'scooter' && (
+            <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center gap-3">
+              {scooterLinks().map(({ name, href, logo, color }) => (
+                <a
+                  key={name}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Open the ${name} app`}
+                  className="pointer-events-auto inline-flex min-h-[52px] items-center gap-2.5 rounded-full border-2 bg-white px-6 py-2.5 transition-shadow duration-200 motion-reduce:transition-none"
+                  style={{
+                    borderColor: color,
+                    boxShadow: `0 0 12px ${color}66, var(--shadow-float)`,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.boxShadow = `0 0 22px ${color}aa, var(--shadow-float)`)}
+                  onMouseLeave={(e) => (e.currentTarget.style.boxShadow = `0 0 12px ${color}66, var(--shadow-float)`)}
+                >
+                  <img src={logo} alt={`${name} logo`} className="h-6 w-auto" />
+                  <ExternalLink size={16} style={{ color }} aria-hidden />
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       <div className="mt-1.5 text-xs text-muted">
@@ -192,25 +222,6 @@ export default function TripMap({ geometry, mode: modeProp, onModeChange, defaul
           ? `Board ${geometry.bus.board.name} → ${geometry.bus.alight.name} on ${geometry.bus.routeName}. Dashed = walk to/from the stop.`
           : `${mode === 'scooter' ? 'Scooter' : 'Walking'} route, A → B.`}
       </div>
-
-      {/* Scooter mode is the one recommendation the app can't fulfill itself — hand off to the apps
-          that unlock one. Store page on phones (never a dead end), provider site on desktop. */}
-      {mode === 'scooter' && (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-ink-soft">Grab one:</span>
-          {scooterLinks().map(({ name, href }) => (
-            <a
-              key={name}
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-ink-soft transition-colors hover:border-scarlet hover:text-scarlet-ink"
-            >
-              Open {name} <ExternalLink size={13} />
-            </a>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

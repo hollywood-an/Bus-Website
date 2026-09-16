@@ -5,15 +5,25 @@
 // the app is installed the store shows "Open" (one tap in), if not the rider can install it, so it's
 // never a dead end. Custom URL schemes (veo://, spin://) are undocumented and fail ugly when the app is
 // missing, so we don't attempt them. On desktop, the provider websites.
+// Logos: veo-logo.png is Veo's own published wordmark (veoride.com); spin-logo.png is the Spin logomark
+// from Wikimedia Commons ("SpinLogomark-Orange.png", CC BY-SA 4.0). Brand colors are faithful vivid
+// approximations of each company's signature color (neither publishes official hex values).
+import veoLogo from '../assets/veo-logo.png';
+import spinLogo from '../assets/spin-logo.png';
+
 const PROVIDERS = [
   {
     name: 'Veo',
+    logo: veoLogo,
+    color: '#00C2B3', // Veo teal
     web: 'https://www.veoride.com/',
     ios: 'https://apps.apple.com/us/app/veo/id1279820696',
     android: 'https://play.google.com/store/apps/details?id=com.pgt.veoride',
   },
   {
     name: 'Spin',
+    logo: spinLogo,
+    color: '#FF5436', // Spin orange
     web: 'https://www.spin.app/',
     ios: 'https://apps.apple.com/us/app/spin-electric-scooters/id1241808993',
     android: 'https://play.google.com/store/apps/details?id=pm.spin',
@@ -31,5 +41,5 @@ function platform() {
 // Resolved at call time (not module load) so DevTools device emulation behaves during dev.
 export function scooterLinks() {
   const p = platform();
-  return PROVIDERS.map(({ name, ...urls }) => ({ name, href: urls[p] ?? urls.web }));
+  return PROVIDERS.map(({ name, logo, color, ...urls }) => ({ name, logo, color, href: urls[p] ?? urls.web }));
 }
