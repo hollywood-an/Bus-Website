@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Footprints, Bus, Zap, MapPinOff } from 'lucide-react';
+import { Footprints, Bus, Zap, MapPinOff, ExternalLink } from 'lucide-react';
 import { loadMaps } from '../lib/loadMaps';
+import { scooterLinks } from '../lib/scooterApps';
 
 // Google-Maps-style trip map: shows ONE mode at a time (fastest by default), with a tab per mode
 // (walk / bus / scooter) carrying its ETA. Tap a tab to swap which route is drawn. `geometry` is the
@@ -191,6 +192,25 @@ export default function TripMap({ geometry, mode: modeProp, onModeChange, defaul
           ? `Board ${geometry.bus.board.name} → ${geometry.bus.alight.name} on ${geometry.bus.routeName}. Dashed = walk to/from the stop.`
           : `${mode === 'scooter' ? 'Scooter' : 'Walking'} route, A → B.`}
       </div>
+
+      {/* Scooter mode is the one recommendation the app can't fulfill itself — hand off to the apps
+          that unlock one. Store page on phones (never a dead end), provider site on desktop. */}
+      {mode === 'scooter' && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-ink-soft">Grab one:</span>
+          {scooterLinks().map(({ name, href }) => (
+            <a
+              key={name}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-ink-soft transition-colors hover:border-scarlet hover:text-scarlet-ink"
+            >
+              Open {name} <ExternalLink size={13} />
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
