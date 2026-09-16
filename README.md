@@ -9,6 +9,13 @@ you where a bus is but not whether you'll actually fit on it. Buckeye Transit ad
 fullness layer on top of the live feed, and puts an agent in front of both that can reason over live
 data, take actions (with confirmation), and operate the UI.
 
+**Live at [bus-website-iota.vercel.app](https://bus-website-iota.vercel.app)** — static frontend on
+Vercel, agent backend on Railway, both auto-deployed from `main`. The landing hero is a live mini-map:
+the real route network with the actual buses moving on it, badged honestly ("N running", "no buses right
+now", or "simulated" — never a false "live"). When a trip's best mode is a scooter, the app hands off to
+the two providers that can unlock one: Veo/Spin brand pills float on the trip map and resolve per
+platform (App Store on iPhone, Play Store on Android, provider sites on desktop).
+
 > Built solo. Started as a HackOH/IO weekend prototype, then rebuilt from a single 1,500-line
 > browser-side chatbot into a real server-side agent. The original prototype demo is
 > [`HackOHVideo.mp4`](./HackOHVideo.mp4) (it shows the old chatbot version, before the agent rebuild).
@@ -45,7 +52,9 @@ bus-capacity-tracker/ (Vite + React)        server/ (Hono + TypeScript)         
 ```
 
 - **Client** (`bus-capacity-tracker/`): React 19, Vite 7, Tailwind 3, lucide-react, Google Maps JS. Five
-  views (map, plan, assistant, report, check) over a map-forward app shell.
+  views over a map-forward app shell, each at its own URL (`/map`, `/plan`, `/assistant`, `/report`,
+  `/crowding`) via a lightweight History-API sync — shareable links and working back/forward without a
+  router dependency.
 - **Server** (`server/`): Hono + `@anthropic-ai/sdk`. `agent/` (streaming loop + tools), `feed/` (poller,
   last-known-good cache, fixtures fallback, mock vehicles), `store/` (`better-sqlite3` ReportStore with
   decay-on-read + seed/demo mode), `geo/` + `planning/` (geocoded multi-modal trip planning), plus
@@ -130,25 +139,23 @@ stops, is in [`SECURITY.md`](./SECURITY.md).
 
 ## Deployment
 
-Split by shape: the **frontend** (static Vite build) → **Vercel**; the **backend** (a long-lived Node
-process — background feed poller, in-memory cache + rate limiter, SQLite) → **Railway**. The browser
-calls the backend directly (`VITE_API_BASE`), keeping Vercel out of the assistant's SSE path.
+Live and auto-deployed: every push to `main` rebuilds the **frontend on Vercel**
+([bus-website-iota.vercel.app](https://bus-website-iota.vercel.app), root `bus-capacity-tracker/`,
+config in its `vercel.json` — including the SPA rewrite that makes `/map`-style deep links work) and the
+**backend on Railway** (root `server/`, config in `server/railway.json`: `npm start`, healthcheck
+`/api/health`, SQLite on a volume at `/data`). The split follows the shapes: the frontend is a static
+Vite build; the backend is a long-lived Node process (background feed poller, in-memory cache + rate
+limiter, SQLite) that serverless would break. The browser calls Railway directly (`VITE_API_BASE`),
+keeping Vercel out of the assistant's SSE path.
 
-**Do the [operator checklist in `SECURITY.md`](./SECURITY.md#operator-checklist-deployment) first** —
-rotate the key that was in git history, set the Anthropic spend cap, restrict both Google keys.
-
-1. **Backend → Railway.** New project from this repo, root `server/`. Config in `server/railway.json`
-   (build `npm install`, start `npm start`, healthcheck `/api/health`). Attach a **volume mounted at
-   `/data`**. Set env: `ANTHROPIC_API_KEY`, `GOOGLE_MAPS_SERVER_KEY`, `REPORTS_DB=/data/reports.db`,
-   `SEED_DEMO=false`, `USE_MOCK_VEHICLES=false`, and `ALLOWED_ORIGIN=` (fill in after step 2). Copy the
-   service URL, e.g. `https://bus-agent.up.railway.app`.
-2. **Frontend → Vercel.** Import the repo, root `bus-capacity-tracker` (config in its `vercel.json`).
-   Set env `VITE_GOOGLE_MAPS_API_KEY` (the restricted browser key) and `VITE_API_BASE=` the Railway URL
-   from step 1. Deploy, then copy the Vercel URL.
-3. **Close the loop.** Put the Vercel URL into Railway's `ALLOWED_ORIGIN` and redeploy the backend; add
-   the Vercel domain to the browser Maps key's referrer allow-list.
-4. **Verify:** `curl https://<railway>/api/health` → ok; open the Vercel URL → Map/Plan work and the
-   **assistant streams**; confirm the Anthropic spend cap is active. Then flip the repo public.
+Config that lives in dashboards, not git — see the
+[operator checklist in `SECURITY.md`](./SECURITY.md#operator-checklist-deployment) for the full set:
+- **Railway:** `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `GOOGLE_MAPS_SERVER_KEY` (API-restricted),
+  `REPORTS_DB=/data/reports.db`, `SEED_DEMO=false`, `USE_MOCK_VEHICLES=false`,
+  `ALLOWED_ORIGIN=<the Vercel origin>` (CORS allow-list).
+- **Vercel:** `VITE_GOOGLE_MAPS_API_KEY` (browser key, HTTP-referrer + Maps-JS-only restricted),
+  `VITE_API_BASE=<the Railway origin>`.
+- **Consoles:** hard Anthropic monthly spend cap (the real AI-cost ceiling); Google key restrictions.
 
 ## Tests
 
