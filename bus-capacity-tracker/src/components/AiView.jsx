@@ -18,6 +18,13 @@ export default function AiView({
 }) {
   const waiting = isAiThinking && chatMessages[chatMessages.length - 1]?.role !== 'assistant';
 
+  // Auto-focus the input on desktop only (type immediately). On phones, focusing on view switch pops
+  // the keyboard and triggers the browser's input zoom before the rider even asked to type.
+  const inputRef = useRef(null);
+  useEffect(() => {
+    if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) inputRef.current?.focus();
+  }, []);
+
   // Keep the newest message in view: always after the user's own send, and while they haven't
   // scrolled up to read (so a streaming answer never yanks them back down mid-scroll).
   const scrollRef = useRef(null);
@@ -129,7 +136,7 @@ export default function AiView({
             submission is gated in sendMessage), so focus is never dropped mid-conversation. */}
         <input
           type="text"
-          autoFocus
+          ref={inputRef}
           value={chatInput}
           onChange={(e) => setChatInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && sendMessage()}

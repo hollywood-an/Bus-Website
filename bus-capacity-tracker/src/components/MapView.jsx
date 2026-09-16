@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { MapPinOff, LocateFixed, Navigation2, AlertTriangle } from 'lucide-react';
 import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
@@ -37,17 +37,9 @@ export default function MapView({
   const toggleRoute = (code) =>
     setSelectedRoutes((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
 
-  // On phones the detail panel stacks below a 52vh map, so a chip tap looked like it did nothing —
-  // the answer rendered off-screen. Scroll it into view when a selection starts.
-  const asideRef = useRef(null);
-  const prevSelCount = useRef(selectedRoutes.length);
-  useEffect(() => {
-    const was = prevSelCount.current;
-    prevSelCount.current = selectedRoutes.length;
-    if (was === 0 && selectedRoutes.length > 0 && window.matchMedia('(max-width: 767px)').matches) {
-      asideRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [selectedRoutes.length]);
+  // Note: this used to auto-scroll the detail panel into view on mobile when a selection started, but
+  // the surprise scroll read as a glitch (the page "jumping down"), so it was removed — the map stays
+  // put and the rider scrolls when they want the detail.
 
   // Stop count for a single selected route (server-cached; cheap).
   useEffect(() => {
@@ -158,7 +150,7 @@ export default function MapView({
 
         {/* Detail panel (right on desktop, below on mobile): live service board for All, full detail
             for one route, a compact card per route when comparing several. */}
-        <aside ref={asideRef} className="mt-3 rounded-xl border border-line bg-surface p-4 md:mt-0 md:w-80 md:shrink-0 md:overflow-y-auto">
+        <aside className="mt-3 rounded-xl border border-line bg-surface p-4 md:mt-0 md:w-80 md:shrink-0 md:overflow-y-auto">
           {selectedRouteObjs.length === 0 && (
             <ServiceBoard
               routes={routes}
