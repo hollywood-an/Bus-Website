@@ -126,11 +126,12 @@ function BusItinerary({ trip }) {
 
 // Free-text, geocoded planning. All state lives in usePlanner (App-level) so a planned trip
 // survives view switches; this component is presentational. Restyled to the Bold Buckeye system.
-export default function PlannerView({ planner }) {
-  const { fromLocation, setFromLocation, toLocation, setToLocation, trip, mode, setMode, loading, error, plan } = planner;
+export default function PlannerView({ planner, requestLocation }) {
+  const { fromLocation, setFromLocation, toLocation, setToLocation, setFromCoords, trip, mode, setMode, loading, error, plan } = planner;
 
   const fromRef = useRef(null);
   const toRef = useRef(null);
+  const [locError, setLocError] = useState(''); // "Your location" pick failed (permission denied etc.)
 
   const geometry = tripGeometry(trip);
 
@@ -171,10 +172,14 @@ export default function PlannerView({ planner }) {
           <div className="min-w-0 flex-1 space-y-2.5">
             <SuggestInput
               value={fromLocation}
-              onChange={setFromLocation}
+              onChange={(t) => {
+                setFromLocation(t);
+                setFromCoords(null); // typing overrides a previous "Your location" pick
+              }}
               onSelect={(text) => {
                 setFromLocation(text);
-                if (toLocation.trim()) plan(text, toLocation);
+                setFromCoords(null);
+                if (toLocation.trim()) plan(text, toLocation, null);
                 else toRef.current?.focus();
               }}
               onEnter={() => plan()}
@@ -182,6 +187,21 @@ export default function PlannerView({ planner }) {
               ariaLabel="From"
               inputRef={fromRef}
               className={inputClass}
+              topAction={{
+                label: 'Your location',
+                onPick: async () => {
+                  setLocError('');
+                  const here = await requestLocation?.();
+                  if (!here) {
+                    setLocError('Location unavailable. Allow location access in your browser, or type a starting point.');
+                    return;
+                  }
+                  setFromCoords(here);
+                  setFromLocation('Your location');
+                  if (toLocation.trim()) plan('Your location', toLocation, here);
+                  else toRef.current?.focus();
+                },
+              }}
             />
             <SuggestInput
               value={toLocation}
@@ -205,7 +225,8 @@ export default function PlannerView({ planner }) {
               const t = toLocation;
               setFromLocation(t);
               setToLocation(f);
-              if (trip && f.trim() && t.trim()) plan(t, f); // return trip in one tap
+              setFromCoords(null); // a coords origin can't become the destination — swap goes text-only
+              if (trip && f.trim() && t.trim()) plan(t, f, null); // return trip in one tap
             }}
             aria-label="Swap from and to"
             title="Swap from and to"
@@ -224,8 +245,8 @@ export default function PlannerView({ planner }) {
         </button>
       </div>
 
-      {error && (
-        <div className="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-sm font-semibold text-ink-soft">{error}</div>
+      {(error || locError) && (
+        <div className="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-sm font-semibold text-ink-soft">{error || locError}</div>
       )}
 
       {!trip && <CampusPreviewMap />}

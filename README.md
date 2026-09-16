@@ -14,7 +14,10 @@ Vercel, agent backend on Railway, both auto-deployed from `main`. The landing he
 the real route network with the actual buses moving on it, badged honestly ("N running", "no buses right
 now", or "simulated" — never a false "live"). When a trip's best mode is a scooter, the app hands off to
 the two providers that can unlock one: Veo/Spin brand pills float on the trip map and resolve per
-platform (App Store on iPhone, Play Store on Android, provider sites on desktop).
+platform (App Store on iPhone, Play Store on Android, provider sites on desktop). All three core
+surfaces are location-aware — opt-in browser geolocation puts a blue dot + your closest stops on the
+map, a Google-Maps-style "Your location" origin in the planner, and "near me" answers in the assistant
+(gesture-gated permission, coordinates validated server-side and never stored; see `SECURITY.md`).
 
 > Built solo. Started as a HackOH/IO weekend prototype, then rebuilt from a single 1,500-line
 > browser-side chatbot into a real server-side agent. The original prototype demo is

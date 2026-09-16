@@ -11,11 +11,13 @@ import { apiUrl } from './api';
 //
 // Text chunks go to onDelta; everything else goes to onEvent. Returns the accumulated text, and
 // throws if the transport fails or an error arrives before any text (so the caller can fall back).
-export async function streamAgent({ messages, signal, onDelta, onEvent }) {
+// `location` ({lat,lng}, optional) is the user's opt-in position — sent only when the user granted
+// the browser permission; the server validates + campus-gates it and never stores it.
+export async function streamAgent({ messages, location, signal, onDelta, onEvent }) {
   const res = await fetch(apiUrl('/api/agent'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify(location ? { messages, location } : { messages }),
     signal,
   });
 

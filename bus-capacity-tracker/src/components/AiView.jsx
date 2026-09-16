@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Send, Bot } from 'lucide-react';
+import { Send, Bot, MapPin } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import TripMap from './TripMap';
@@ -15,6 +15,8 @@ export default function AiView({
   pendingConfirm,
   confirmPending,
   cancelPending,
+  locationStatus = 'unknown',
+  requestLocation,
 }) {
   const waiting = isAiThinking && chatMessages[chatMessages.length - 1]?.role !== 'assistant';
 
@@ -129,6 +131,25 @@ export default function AiView({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Location opt-in: a quiet chip, never an unprompted browser dialog. Granted state shows a
+          subtle confirmation so "near me" answers don't feel like magic (honest signal). */}
+      {locationStatus === 'granted' ? (
+        <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-muted">
+          <MapPin size={11} /> Using your location for nearby answers
+        </p>
+      ) : (
+        locationStatus !== 'unavailable' &&
+        requestLocation && (
+          <button
+            type="button"
+            onClick={() => requestLocation()}
+            className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-ink-soft transition-colors hover:border-scarlet hover:text-scarlet-ink"
+          >
+            <MapPin size={14} /> Share location for nearby answers
+          </button>
+        )
       )}
 
       <div className="mt-3 flex gap-2">

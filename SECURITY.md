@@ -106,6 +106,27 @@ The concern behind a public AI endpoint is a bill run-up. Two layers:
   a deploy prerequisite (operator checklist below). A bot challenge (e.g. Turnstile) on the agent
   endpoint is the next step if abuse ever materializes; the spend cap makes it unnecessary to start.
 
+## User location (opt-in)
+
+The map, planner, and assistant can use the rider's position. Handling, stated plainly:
+
+- **Gesture-gated opt-in.** The browser's permission prompt fires only from an explicit action
+  ("Locate me", picking "Your location" in the planner, the assistant's share chip) — never on page
+  load. If permission was granted on a past visit, the Permissions API is consulted and a position
+  watch starts silently; nothing prompts again.
+- **Sent per-request, never stored.** Coordinates (rounded to ~1m) ride along on `/api/plan`
+  (`fromLat`/`fromLng`) and `POST /api/agent` (`location`) only when needed for that request. The
+  server validates them like any input — `Number.isFinite` + the ~5km campus-radius check
+  (`parseUserOrigin`, `server/src/geo/util.ts`) — uses them for that response, and discards them.
+  They are not written to the report store, not logged, and not placed in URLs beyond the plan query.
+- **Bounds are enforced server-side** because coordinate origins bypass the geocoder (where the
+  campus-radius guard normally lives). Off-campus or garbage coordinates are rejected
+  (`unresolved_from`) or silently dropped (agent context), never processed.
+
+**Limitation:** like every client input here, coordinates are client-supplied and spoofable — a
+scripted client can claim any on-campus position. That grants nothing: location only *personalizes
+reads* (nearest stops, trip origins); no write or trust decision keys off it.
+
 ## CORS and transport
 
 `/api/*` is locked to a single `ALLOWED_ORIGIN` (default `http://localhost:5173`, set to the deployed
