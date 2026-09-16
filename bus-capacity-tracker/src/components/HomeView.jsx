@@ -3,6 +3,7 @@ import { Navigation, Bot, Map, Megaphone, Gauge, Footprints, Bus, Zap, ArrowRigh
 import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
 import TripMap from './TripMap';
+import HeroLiveMap from './HeroLiveMap';
 import { tripGeometry } from '../lib/tripGeometry';
 import { apiUrl } from '../lib/api';
 
@@ -129,9 +130,10 @@ export default function HomeView({ setView, prefillPlanner, askAssistant, openMa
               </button>
             </div>
           </div>
-          <div className="h-44 sm:h-52">
-            <RouteMotif />
-          </div>
+          {/* Live buses moving on the real campus map — falls back to the static motif if Maps is
+              unavailable. Tap-through to the full map. */}
+          <HeroLiveMap routes={routes} onOpenMap={() => setView('map')} fallback={<RouteMotif />} />
+
         </div>
         {routes.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 border-t border-line bg-surface-2 px-6 py-3">
