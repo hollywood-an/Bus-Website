@@ -1,4 +1,4 @@
-import { OSU_CENTER, OSU_RADIUS_M, withinCampus, fetchJson } from './util';
+import { OSU_CENTER, OSU_RADIUS_M, withinCampus, fetchJson, haversineMeters } from './util';
 
 // Resolve any OSU building or nearby address to coordinates, biased to campus. Primary: Google
 // Places (New) Text Search (great for building names like "Jones Tower"); fallback: Geocoding API
@@ -36,6 +36,45 @@ export async function geocode(query: string): Promise<Place | null> {
   if (!result) result = curatedFallback(q);
 
   if (result || !googleUnreachable) cache.set(key, result);
+  return result;
+}
+
+// Coordinates -> a human place ("where am I"). Google reverse geocoding when a key is set; nearest
+// curated campus spot otherwise (honest, offline-safe). Cached on a ~11m grid (4 decimals), same
+// don't-cache-transient-failures rule as the forward path.
+const reverseCache = new Map<string, Place | null>();
+
+export async function reverseGeocode(lat: number, lng: number): Promise<Place | null> {
+  const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  if (reverseCache.has(key)) return reverseCache.get(key) ?? null;
+
+  let result: Place | null = null;
+  let googleUnreachable = false;
+  if (KEY) {
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${KEY}`;
+      const data = (await fetchJson(url)) as {
+        results?: Array<{ formatted_address?: string; address_components?: Array<{ long_name?: string; types?: string[] }> }>;
+      };
+      const r = data?.results?.[0];
+      if (r?.formatted_address) {
+        result = { name: r.formatted_address.split(',')[0], lat, lng, address: r.formatted_address };
+      }
+    } catch {
+      googleUnreachable = true;
+    }
+  }
+  if (!result) {
+    // Nearest curated campus landmark — approximate but honest ("near Thompson Library").
+    let best: { place: Place; m: number } | null = null;
+    for (const { place } of CURATED) {
+      const m = haversineMeters(lat, lng, place.lat, place.lng);
+      if (!best || m < best.m) best = { place, m };
+    }
+    if (best) result = { name: `near ${best.place.name} (~${Math.round(best.m)} m)`, lat, lng };
+  }
+
+  if (result || !googleUnreachable) reverseCache.set(key, result);
   return result;
 }
 

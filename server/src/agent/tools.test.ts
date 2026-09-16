@@ -149,3 +149,49 @@ describe('UI-control tools (drive the app, emit ui_directive)', () => {
     expect(directiveFor('plan_route', await dispatchTool('plan_route', { from: 'Narnia', to: 'rpac' }))).toBeNull();
   });
 });
+
+describe('find_nearest_stops', () => {
+  const CAMPUS = { lat: 40.0017, lng: -83.0197 }; // OSU_CENTER default
+
+  it('returns nearby fixture stops sorted by distance with serving routes', async () => {
+    const r: any = await dispatchTool('find_nearest_stops', { lat: CAMPUS.lat, lng: CAMPUS.lng });
+    expect(r.error).toBeUndefined();
+    expect(r.stops.length).toBeGreaterThan(0);
+    expect(r.stops.length).toBeLessThanOrEqual(3); // default limit
+    for (let i = 1; i < r.stops.length; i++) expect(r.stops[i].meters).toBeGreaterThanOrEqual(r.stops[i - 1].meters);
+    expect(Array.isArray(r.stops[0].routes)).toBe(true);
+    expect(r.stops[0].routes.length).toBeGreaterThan(0);
+  });
+
+  it('clamps limit to at most 5', async () => {
+    const r: any = await dispatchTool('find_nearest_stops', { lat: CAMPUS.lat, lng: CAMPUS.lng, limit: 99 });
+    expect(r.stops.length).toBeLessThanOrEqual(5);
+  });
+
+  it('rejects garbage and off-campus coordinates', async () => {
+    expect(((await dispatchTool('find_nearest_stops', { lat: 'x', lng: 'y' })) as any).error).toBe('bad_location');
+    expect(((await dispatchTool('find_nearest_stops', { lat: 41.0, lng: CAMPUS.lng })) as any).error).toBe('bad_location');
+  });
+
+  it('plan_route accepts a coordinate origin (from_lat/from_lng)', async () => {
+    const r: any = await dispatchTool('plan_route', { from_lat: CAMPUS.lat, from_lng: CAMPUS.lng, to: 'rpac' });
+    expect(r.error).toBeUndefined();
+    expect(r.from).toBe('Your location');
+    expect(r.walkMin).toBeGreaterThan(0);
+  });
+});
+
+describe('describe_location', () => {
+  it('resolves campus coords to a place (keyless: nearest curated landmark)', async () => {
+    // Tests run without GOOGLE_MAPS_SERVER_KEY, so this exercises the honest curated fallback.
+    const r: any = await dispatchTool('describe_location', { lat: 40.00167, lng: -83.01972 }); // = Ohio Stadium
+    expect(r.error).toBeUndefined();
+    expect(r.name).toContain('Ohio Stadium');
+    expect(r.note).toBeTruthy();
+  });
+
+  it('rejects garbage and off-campus coordinates', async () => {
+    expect(((await dispatchTool('describe_location', { lat: 'x', lng: 'y' })) as any).error).toBe('bad_location');
+    expect(((await dispatchTool('describe_location', { lat: 41.0, lng: -83.0197 })) as any).error).toBe('bad_location');
+  });
+});

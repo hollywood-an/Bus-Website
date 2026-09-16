@@ -125,3 +125,39 @@ describe('routes', () => {
     expect(((await res.json()) as { error: string }).error).toBe('bad_json');
   });
 });
+
+describe('GET /api/plan with a coordinate origin', () => {
+  it('plans from fromLat/fromLng and names the origin "Your location"', async () => {
+    const res = await app.request('/api/plan?fromLat=40.0017&fromLng=-83.0197&to=Ohio%20Union', {
+      headers: { 'x-client-id': 'test-plan-coords' },
+    });
+    expect(res.status).toBe(200);
+    const d: any = await res.json();
+    expect(d.error).toBeUndefined();
+    expect(d.from.name).toBe('Your location');
+    expect(d.walkMin).toBeGreaterThan(0);
+  });
+
+  it('rejects non-finite coordinates as unresolved_from', async () => {
+    const res = await app.request('/api/plan?fromLat=abc&fromLng=-83.0197&to=Ohio%20Union', {
+      headers: { 'x-client-id': 'test-plan-coords' },
+    });
+    const d: any = await res.json();
+    expect(d.error).toBe('unresolved_from');
+  });
+
+  it('rejects off-campus coordinates as unresolved_from', async () => {
+    const res = await app.request('/api/plan?fromLat=41.0&fromLng=-83.0197&to=Ohio%20Union', {
+      headers: { 'x-client-id': 'test-plan-coords' },
+    });
+    const d: any = await res.json();
+    expect(d.error).toBe('unresolved_from');
+  });
+
+  it('still requires a destination alongside coordinates', async () => {
+    const res = await app.request('/api/plan?fromLat=40.0017&fromLng=-83.0197', {
+      headers: { 'x-client-id': 'test-plan-coords' },
+    });
+    expect(res.status).toBe(400);
+  });
+});
