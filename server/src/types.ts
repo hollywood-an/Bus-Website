@@ -12,6 +12,12 @@ export interface ChatMessage {
 export interface AgentRequest {
   messages: ChatMessage[];
   /**
+   * Optional user location, sent only after the user granted the browser's geolocation permission.
+   * Server-side it is bounds-validated + campus-gated (parseUserOrigin) and appended to the system
+   * prompt for this request only — never stored or logged.
+   */
+  location?: { lat?: number; lng?: number };
+  /**
    * Phase 1 only: a crowdsourced capacity/down summary the client computes and sends so the
    * proxy has parity with the old prompt-stuffing chatbot. This goes away in Phase 1.6/2 when
    * reports live server-side and the agent reads them via tools instead of trusting the client.

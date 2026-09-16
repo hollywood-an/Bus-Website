@@ -25,6 +25,18 @@ export function withinCampus(lat: number, lng: number): boolean {
   return haversineMeters(OSU_CENTER.lat, OSU_CENTER.lng, lat, lng) <= OSU_RADIUS_M;
 }
 
+// Parse a client-supplied coordinate pair into a bounds-checked "Your location" origin. null = not
+// provided or invalid. Validation mirrors validateReport (coerce, finite, whitelist by area): the
+// campus-radius check matters because coordinate callers bypass geocode(), where the guard normally
+// lives. Shared by GET /api/plan, POST /api/agent, and the location-aware agent tools.
+export function parseUserOrigin(latRaw: unknown, lngRaw: unknown): { name: string; lat: number; lng: number } | null {
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (!withinCampus(lat, lng)) return null;
+  return { name: 'Your location', lat, lng };
+}
+
 // Time-boxed fetch returning parsed JSON, or throwing.
 export async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
   const controller = new AbortController();

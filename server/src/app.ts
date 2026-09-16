@@ -11,6 +11,7 @@ import { TOOL_DEFS, dispatchTool, directiveFor } from './agent/tools';
 import { validateReport } from './validateReport';
 import { planTrip } from './planning/planTrip';
 import { suggestPlaces } from './geo/suggest';
+import { parseUserOrigin } from './geo/util';
 import type { AgentRequest, ChatMessage } from './types';
 
 export const MODEL = process.env.AGENT_MODEL ?? 'claude-haiku-4-5';
@@ -136,10 +137,19 @@ app.post('/api/reports', reportLimiter, async (c) => {
 });
 
 // Multi-modal trip planning (geocoded). Used by the Route Planner tab; the AI assistant reaches the
-// same core via the plan_route tool.
+// same core via the plan_route tool. The origin can alternatively be the user's own coordinates
+// (fromLat/fromLng — the "Your location" flow), validated and campus-bounded above.
 app.get('/api/plan', planLimiter, async (c) => {
-  const from = c.req.query('from') ?? '';
   const to = c.req.query('to') ?? '';
+  const fromLat = c.req.query('fromLat');
+  const fromLng = c.req.query('fromLng');
+  if (fromLat !== undefined || fromLng !== undefined) {
+    const origin = parseUserOrigin(fromLat, fromLng);
+    if (!origin) return c.json({ error: 'unresolved_from', query: 'Your location' });
+    if (!to.trim()) return c.json({ error: 'missing_params' }, 400);
+    return c.json(await planTrip(origin, to));
+  }
+  const from = c.req.query('from') ?? '';
   if (!from.trim() || !to.trim()) return c.json({ error: 'missing_params' }, 400);
   const result = await planTrip(from, to);
   return c.json(result); // includes an `error` field if a location couldn't be resolved
@@ -162,12 +172,27 @@ app.post('/api/agent', async (c) => {
   const messages = normalizeMessages(body?.messages);
   if (messages.length === 0) return c.json({ error: 'no_messages' }, 400);
 
-  // Run the real agent loop: the model fetches what it needs via tools — the prompt carries no data.
+  // Optional, validated user location (an opt-in the client sends only after the user granted the
+  // browser permission). Bounds-checked and campus-gated; invalid or off-campus coords are silently
+  // dropped. Never stored or logged — it exists for this request only, appended AFTER the static
+  // prompt so the cacheable prefix stays byte-identical.
+  const loc = parseUserOrigin(body?.location?.lat, body?.location?.lng);
+  const turn = loc
+    ? makeRunTurn(
+        anthropic,
+        MODEL,
+        `${SYSTEM_PROMPT}\n\nThe user has shared their current location: lat ${loc.lat}, lng ${loc.lng} (on/near campus). For "near me" questions use find_nearest_stops with these coordinates; to plan a trip from where they are, call plan_route with from_lat/from_lng instead of a from string; if they ask where they are or for their address, call describe_location and answer with the place/address it returns. NEVER include these raw coordinates in a reply — say "your location" or use the described place.`,
+        TOOL_DEFS,
+      )
+    : runTurn;
+
+  // Run the real agent loop: the model fetches what it needs via tools — the prompt carries no data
+  // beyond the optional location line above.
   return streamSSE(c, async (stream) => {
     try {
       await runAgentLoop({
         messages,
-        runTurn,
+        runTurn: turn,
         dispatch: dispatchTool,
         directiveFor,
         onText: (t) => stream.writeSSE({ data: JSON.stringify({ type: 'delta', text: t }) }),

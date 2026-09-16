@@ -61,9 +61,13 @@ export interface TripPlan {
 
 export type TripResult = { error: 'unresolved_from' | 'unresolved_to'; query: string } | TripPlan;
 
-export async function planTrip(fromQuery: string, toQuery: string): Promise<TripResult> {
-  const from = await geocode(fromQuery);
-  if (!from) return { error: 'unresolved_from', query: fromQuery };
+// The origin can be a text query (geocoded, as always) or an already-resolved Place — the "Your
+// location" flow hands us the user's coordinates directly, and everything past geocoding is
+// coordinate-native anyway. Callers passing a Place are responsible for bounds-checking it first
+// (withinCampus), since that guard otherwise lives inside geocode().
+export async function planTrip(fromQuery: string | Place, toQuery: string): Promise<TripResult> {
+  const from = typeof fromQuery === 'string' ? await geocode(fromQuery) : fromQuery;
+  if (!from) return { error: 'unresolved_from', query: String(fromQuery) };
   const to = await geocode(toQuery);
   if (!to) return { error: 'unresolved_to', query: toQuery };
 

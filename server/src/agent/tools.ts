@@ -2,6 +2,8 @@ import * as feed from '../feed';
 import { getReportStore } from '../store';
 import { planTrip } from '../planning/planTrip';
 import { validateReport } from '../validateReport';
+import { haversineMeters, parseUserOrigin } from '../geo/util';
+import { reverseGeocode } from '../geo/geocode';
 
 // Read tools for the agent. Each reads server-owned state (feed cache + report store) and returns a
 // plain JSON-serializable object. Tools validate their own input and return { error } rather than
@@ -81,6 +83,61 @@ function getStops(input: { route?: unknown }) {
   };
 }
 
+// Nearest stops to a coordinate, across every route. Stops shared by several routes are deduped
+// (by id, falling back to name) and collect all their serving routes. Coordinates are validated the
+// same way as every other user-origin (finite + campus radius) — the model passes the location it
+// was given in the system prompt, so garbage in gets a recoverable { error } out.
+export function findNearestStops(input: { lat?: unknown; lng?: unknown; limit?: unknown }) {
+  const origin = parseUserOrigin(input.lat, input.lng);
+  if (!origin) return { error: 'bad_location', hint: 'lat/lng must be numeric coordinates on or near OSU campus.' };
+  const lim = Math.min(Math.max(Number(input.limit) || 3, 1), 5);
+
+  const byKey = new Map<string, { id?: string; name: string; lat: number; lng: number; routes: string[]; meters: number }>();
+  for (const r of feed.getRoutes()) {
+    const detail = feed.getRouteDetail(r.code);
+    for (const s of detail?.stops ?? []) {
+      const key = s.id || s.name;
+      const existing = byKey.get(key);
+      if (existing) {
+        if (!existing.routes.includes(r.code)) existing.routes.push(r.code);
+      } else {
+        byKey.set(key, {
+          id: s.id,
+          name: s.name,
+          lat: round(s.latitude),
+          lng: round(s.longitude),
+          routes: [r.code],
+          meters: Math.round(haversineMeters(origin.lat, origin.lng, s.latitude, s.longitude)),
+        });
+      }
+    }
+  }
+  const stops = [...byKey.values()].sort((a, b) => a.meters - b.meters).slice(0, lim);
+  return {
+    stops,
+    note: stops.length
+      ? 'Distances are straight-line meters from the user. Use get_next_arrival with a stop name for its ETAs.'
+      : 'No stops known yet — the route feed may still be warming up.',
+  };
+}
+
+// Coordinates -> a human-readable place, so "where am I" gets an address, never lat/lng recited
+// back. Reverse-geocodes via Google when the server has a key; nearest curated campus landmark
+// otherwise (the result says which).
+export async function describeLocation(input: { lat?: unknown; lng?: unknown }) {
+  const origin = parseUserOrigin(input.lat, input.lng);
+  if (!origin) return { error: 'bad_location', hint: 'lat/lng must be numeric coordinates on or near OSU campus.' };
+  const place = await reverseGeocode(origin.lat, origin.lng);
+  if (!place) return { error: 'no_result', hint: 'Could not resolve these coordinates to a place.' };
+  return {
+    name: place.name,
+    address: place.address,
+    note: place.address
+      ? 'Answer with this address/place name, not coordinates.'
+      : 'Approximate (nearest campus landmark — no precise address available). Say so; never recite coordinates.',
+  };
+}
+
 function getNextArrival(input: { stop?: unknown; route?: unknown }) {
   if (typeof input.stop !== 'string' || !input.stop.trim()) return { error: 'missing_stop' };
   // Shared estimator (also serves GET /api/arrivals). Keep the raw stop string in the reply.
@@ -139,9 +196,12 @@ function checkDownBuses() {
 // Plan a trip between ANY two OSU buildings / nearby addresses (geocoded). Returns a compact summary
 // for the model plus `_geometry` (stripped from the tool_result by the loop) that directiveFor turns
 // into a show_trip directive — the 3 options render on a map inside the chat (no view switch).
-async function planRoute(input: { from?: unknown; to?: unknown }) {
+async function planRoute(input: { from?: unknown; to?: unknown; from_lat?: unknown; from_lng?: unknown }) {
+  // Coordinate origin ("from where I am") wins over text when both are supplied; validated the same
+  // way as GET /api/plan's fromLat/fromLng.
+  const coordOrigin = input.from_lat !== undefined || input.from_lng !== undefined ? parseUserOrigin(input.from_lat, input.from_lng) : null;
   const result = await planTrip(
-    typeof input.from === 'string' ? input.from : '',
+    coordOrigin ?? (typeof input.from === 'string' ? input.from : ''),
     typeof input.to === 'string' ? input.to : '',
   );
   if ('error' in result) {
@@ -267,6 +327,10 @@ export async function dispatchTool(name: string, input: Record<string, unknown>)
       return planRoute(input);
     case 'get_stops':
       return getStops(input);
+    case 'find_nearest_stops':
+      return findNearestStops(input);
+    case 'describe_location':
+      return describeLocation(input);
     case 'submit_capacity_report':
       return proposeCapacity(input);
     case 'report_bus_down':
@@ -359,14 +423,16 @@ export const TOOL_DEFS = [
   {
     name: 'plan_route',
     description:
-      'Plan a trip between ANY two OSU buildings or nearby addresses (free text — "Morrill", "Jones Tower", "1739 N High St"). Returns walk vs bus vs scooter, including "walk to the nearest stop, take route X", and renders the 3 options on a map inside the chat. Use for any "how do I get from A to B" question — do NOT also open the planner or switch to the campus map.',
+      'Plan a trip between ANY two OSU buildings or nearby addresses (free text — "Morrill", "Jones Tower", "1739 N High St"). Returns walk vs bus vs scooter, including "walk to the nearest stop, take route X", and renders the 3 options on a map inside the chat. Use for any "how do I get from A to B" question — do NOT also open the planner or switch to the campus map. If the user shared their location and wants to start from where they are, pass from_lat/from_lng (from the system prompt) instead of a from string.',
     input_schema: {
       type: 'object',
       properties: {
-        from: { type: 'string', description: 'Origin campus location.' },
+        from: { type: 'string', description: 'Origin campus location (omit when using from_lat/from_lng).' },
         to: { type: 'string', description: 'Destination campus location.' },
+        from_lat: { type: 'number', description: "The user's shared latitude — use for trips starting at the user's current location." },
+        from_lng: { type: 'number', description: "The user's shared longitude." },
       },
-      required: ['from', 'to'],
+      required: ['to'],
     },
   },
   {
@@ -376,6 +442,33 @@ export const TOOL_DEFS = [
       type: 'object',
       properties: { route: { type: 'string', description: 'Route code, e.g. CC.' } },
       required: ['route'],
+    },
+  },
+  {
+    name: 'find_nearest_stops',
+    description:
+      "The bus stops closest to a coordinate, across all routes (name, serving routes, straight-line distance in meters). Use with the user's shared location for any 'nearest stop to me' / 'where do I catch the bus' question, then get_next_arrival for ETAs.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        lat: { type: 'number', description: 'Latitude (typically the user’s shared location).' },
+        lng: { type: 'number', description: 'Longitude.' },
+        limit: { type: 'number', description: 'How many stops (1-5, default 3).' },
+      },
+      required: ['lat', 'lng'],
+    },
+  },
+  {
+    name: 'describe_location',
+    description:
+      "Turn coordinates (typically the user's shared location) into a street address / place name. ALWAYS use this when the user asks where they are or for their address — answer with the address, never raw coordinates.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        lat: { type: 'number', description: "The user's shared latitude." },
+        lng: { type: 'number', description: "The user's shared longitude." },
+      },
+      required: ['lat', 'lng'],
     },
   },
   {
