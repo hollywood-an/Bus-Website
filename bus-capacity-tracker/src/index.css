@@ -137,3 +137,11 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Touch devices: keep form fields at 16px — below that, iOS Safari auto-zooms the whole page on focus
+   (the "assistant page opens zoomed in" bug). Desktop keeps the design-scale sizes. */
+@media (pointer: coarse) {
+  input, textarea, select {
+    font-size: 16px;
+  }
+}
