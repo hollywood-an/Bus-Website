@@ -8,7 +8,10 @@ import { apiUrl } from '../lib/api';
 const DEBOUNCE_MS = 250;
 const MIN_CHARS = 2;
 
-export default function SuggestInput({ value, onChange, onSelect, onEnter, placeholder, ariaLabel, inputRef, className }) {
+// `topAction` (optional): a pinned first row shown whenever the dropdown is open — even before any
+// text is typed (the field opens on focus). Used for the planner's persistent "Your location"
+// origin, Google-Maps-style: { label, onPick }.
+export default function SuggestInput({ value, onChange, onSelect, onEnter, placeholder, ariaLabel, inputRef, className, topAction }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [active, setActive] = useState(-1);
@@ -17,6 +20,10 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
   const seqRef = useRef(0); // drops stale fetch responses
   const skipRef = useRef(false); // suppress the refetch caused by picking a suggestion
   const focusedRef = useRef(false); // only fetch/open while the user is actually in the field
+  const offset = topAction ? 1 : 0; // keyboard nav treats the pinned row as index 0
+  // The fetch effect only cares whether a pinned row exists (a boolean), not the object identity —
+  // parents pass a fresh object literal every render, which must not re-fire the effect.
+  const hasTopAction = Boolean(topAction);
 
   useEffect(() => {
     if (skipRef.current) {
@@ -29,7 +36,7 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
     const q = value.trim();
     if (q.length < MIN_CHARS) {
       setItems([]);
-      setOpen(false);
+      setOpen(hasTopAction); // the pinned row stays available even with no text
       setActive(-1);
       return;
     }
@@ -41,13 +48,13 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
           if (seq !== seqRef.current || !d) return;
           const list = Array.isArray(d.suggestions) ? d.suggestions : [];
           setItems(list);
-          setOpen(list.length > 0);
+          setOpen(list.length > 0 || hasTopAction);
           setActive(-1);
         })
         .catch(() => {});
     }, DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [value]);
+  }, [value, hasTopAction]);
 
   const pick = (item) => {
     skipRef.current = true;
@@ -57,23 +64,33 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
     onSelect(item.text);
   };
 
+  const pickTop = () => {
+    skipRef.current = true; // the parent will set the field's text; don't refetch suggestions for it
+    setOpen(false);
+    setItems([]);
+    setActive(-1);
+    topAction.onPick();
+  };
+
+  const optionCount = items.length + offset;
   const onKeyDown = (e) => {
-    if (!open || items.length === 0) {
+    if (!open || optionCount === 0) {
       if (e.key === 'Enter') onEnter?.();
       return;
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActive((a) => (a + 1) % items.length);
+      setActive((a) => (a + 1) % optionCount);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActive((a) => (a <= 0 ? items.length - 1 : a - 1));
+      setActive((a) => (a <= 0 ? optionCount - 1 : a - 1));
     } else if (e.key === 'Enter') {
       // Standard combobox semantics: Enter commits YOUR text unless you explicitly arrowed onto a
       // suggestion. Auto-committing item #0 silently replaced typed addresses.
       if (active >= 0) {
         e.preventDefault();
-        pick(items[active]);
+        if (topAction && active === 0) pickTop();
+        else pick(items[active - offset]);
       } else {
         setOpen(false);
         onEnter?.();
@@ -103,7 +120,7 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
         }}
         onFocus={() => {
           focusedRef.current = true;
-          if (items.length > 0 && value.trim().length >= MIN_CHARS) setOpen(true);
+          if (topAction || (items.length > 0 && value.trim().length >= MIN_CHARS)) setOpen(true);
         }}
         placeholder={placeholder}
         className={className}
@@ -119,8 +136,33 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
           aria-label={`${ariaLabel} suggestions`}
           className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--shadow-float)]"
         >
+          {topAction && (
+            <li key="top-action" id={`${uid}-opt-0`} role="option" aria-selected={active === 0}>
+              {/* mousedown (not click) so the pick beats the input's blur-close */}
+              <button
+                type="button"
+                tabIndex={-1}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pickTop();
+                }}
+                onMouseEnter={() => setActive(0)}
+                className={`flex min-h-11 w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors ${
+                  active === 0 ? 'bg-surface-2' : 'bg-surface'
+                }`}
+              >
+                {/* Google's blue "current location" affordance — instantly recognizable */}
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full" style={{ backgroundColor: '#4285F422' }}>
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: '#4285F4' }} />
+                </span>
+                <span className="font-semibold" style={{ color: '#1a63d8' }}>
+                  {topAction.label}
+                </span>
+              </button>
+            </li>
+          )}
           {items.map((s, i) => (
-            <li key={`${s.source}-${s.main}-${i}`} id={`${uid}-opt-${i}`} role="option" aria-selected={i === active}>
+            <li key={`${s.source}-${s.main}-${i}`} id={`${uid}-opt-${i + offset}`} role="option" aria-selected={i + offset === active}>
               {/* mousedown (not click) so the pick beats the input's blur-close */}
               <button
                 type="button"
@@ -129,9 +171,9 @@ export default function SuggestInput({ value, onChange, onSelect, onEnter, place
                   e.preventDefault();
                   pick(s);
                 }}
-                onMouseEnter={() => setActive(i)}
+                onMouseEnter={() => setActive(i + offset)}
                 className={`flex min-h-11 w-full items-baseline gap-2 px-3 py-2.5 text-left text-sm transition-colors ${
-                  i === active ? 'bg-surface-2' : 'bg-surface'
+                  i + offset === active ? 'bg-surface-2' : 'bg-surface'
                 }`}
               >
                 <span className="min-w-0 truncate font-semibold text-ink">{s.main}</span>

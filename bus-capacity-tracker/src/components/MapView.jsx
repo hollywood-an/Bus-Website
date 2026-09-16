@@ -26,6 +26,8 @@ export default function MapView({
   locateUser,
   locateError,
   openReport,
+  nearestStops = [],
+  hasLocation = false,
 }) {
   const [stopCount, setStopCount] = useState(null);
 
@@ -160,6 +162,8 @@ export default function MapView({
               vehiclesLoaded={vehiclesLoaded}
               vehiclesError={vehiclesError}
               onToggle={toggleRoute}
+              nearestStops={nearestStops}
+              hasLocation={hasLocation}
             />
           )}
           {selectedRouteObjs.length === 1 && (
@@ -343,10 +347,47 @@ function CompactRouteCard({ route, cap, down, routeVehicles = [], vehicleSource 
   );
 }
 
+// One "closest to you" row: stop name + straight-line distance, the routes that serve it, and the
+// soonest live ETA any bus is predicting for it (joined from vehicles' own nextStops — no extra
+// fetch, and no ETA shown unless a bus actually predicts this stop).
+function NearestStopRow({ stop, routes, vehicles, onToggle }) {
+  let best = null; // { etaMin, route }
+  for (const v of vehicles) {
+    for (const ns of v.nextStops || []) {
+      if ((stop.id && ns.id === stop.id) || ns.name === stop.name) {
+        if (!best || ns.etaMin < best.etaMin) best = { etaMin: ns.etaMin, route: v.route };
+      }
+    }
+  }
+  const byCode = new Map(routes.map((r) => [r.code, r]));
+  return (
+    <li className="rounded-lg px-1.5 py-1.5">
+      <span className="flex items-center justify-between gap-2">
+        <span className="min-w-0">
+          <span className="block truncate text-[13px] font-bold text-ink">{stop.name}</span>
+          <span className="font-mono text-[11px] text-muted">~{stop.meters} m away</span>
+        </span>
+        {best && (
+          <span className="shrink-0 font-mono text-[12px] font-bold text-ink-soft">
+            {best.etaMin <= 0 ? 'due' : `~${best.etaMin} min`}
+          </span>
+        )}
+      </span>
+      <span className="mt-1 flex flex-wrap gap-1">
+        {stop.routes.map((code) => (
+          <button key={code} onClick={() => onToggle(code)} title={`Focus ${code} on the map`}>
+            <RouteChip code={code} color={byCode.get(code)?.color} />
+          </button>
+        ))}
+      </span>
+    </li>
+  );
+}
+
 // Live per-route service board: the empty-selection panel leads with what's actually running —
 // real statuses (down-report > not-in-service > running) and the soonest next stop with a real
 // feed ETA. Rows toggle the route into the map selection, so the board doubles as a navigator.
-function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded, vehiclesError = false, onToggle }) {
+function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded, vehiclesError = false, onToggle, nearestStops = [], hasLocation = false }) {
   const rows = routes.map((r) => {
     const routeVehicles = vehicles.filter((v) => v.route === r.code);
     const inService = anyInService(routeVehicles);
@@ -387,6 +428,23 @@ function ServiceBoard({ routes, vehicles, capByCode, downByCode, vehiclesLoaded,
           </p>
         ) : null}
       </div>
+
+      {/* Closest to you — appears once the user has shared their location; the hint teaches the
+          affordance without nagging. Distances are straight-line, honestly labeled with ~. */}
+      {hasLocation && nearestStops.length > 0 ? (
+        <div>
+          <h3 className="text-[13px] font-bold text-ink">Closest to you</h3>
+          <ul className="-mx-1.5 mt-1 space-y-0.5">
+            {nearestStops.map((s) => (
+              <NearestStopRow key={s.id || s.name} stop={s} routes={routes} vehicles={vehicles} onToggle={onToggle} />
+            ))}
+          </ul>
+        </div>
+      ) : (
+        !hasLocation && (
+          <p className="text-[12px] text-muted">Tap “Locate me” on the map to see the stops closest to you.</p>
+        )
+      )}
 
       <ul className="-mx-1.5 space-y-0.5">
         {ordered.map(({ route, dn, inService, status, busStops, cap }) => (

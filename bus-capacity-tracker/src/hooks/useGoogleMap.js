@@ -15,7 +15,7 @@ const FALLBACK_CENTER = { lat: 40.0017, lng: -83.0197 };
 const VEHICLE_POLL_MS = 15000;
 const CAP_LABELS = CAPACITY_LEVELS.map((l) => l.label); // single label source: data/capacity.js
 const CAP_COLORS = ['var(--cap-0)', 'var(--cap-1)', 'var(--cap-2)', 'var(--cap-3)', 'var(--cap-4)'];
-const USER_DOT = '#1d4ed8';
+const USER_DOT = '#4285F4'; // light blue dot; the accuracy halo is the same hue at low opacity
 
 function haversineMeters(aLat, aLng, bLat, bLng) {
   const R = 6371000;
@@ -26,7 +26,7 @@ function haversineMeters(aLat, aLng, bLat, bLng) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
+export function useGoogleMap(view, { capacity = [], down = [], userLocation = null, requestLocation } = {}) {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false); // Maps JS failed to load (bad/missing key, offline)
   const [routesError, setRoutesError] = useState(false); // /api/routes unreachable
@@ -51,6 +51,10 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
   const outOfServiceRef = useRef(new Set()); // same data, readable inside stale-closure callbacks (locateUser)
   const [highlightedStops, setHighlightStops] = useState([]); // stop ids the agent asked to emphasize
   const [locateError, setLocateError] = useState('');
+  // Bumped whenever a route detail lands in the cache, so the nearest-stops computation re-runs
+  // once the stops it needs actually exist (the cache itself is a ref and can't trigger effects).
+  const [detailsVersion, setDetailsVersion] = useState(0);
+  const [nearestStops, setNearestStops] = useState([]); // [{ id, name, meters, routes }] — top 3 near the user
 
   const mapRef = useRef(null);
   const infoWindowRef = useRef(null);
@@ -58,6 +62,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
   const routeOverlaysRef = useRef([]); // stop markers + polylines for the current selection
   const vehicleMarkersRef = useRef([]);
   const userMarkerRef = useRef(null);
+  const accuracyCircleRef = useRef(null); // the halo around the user dot
   const popupTokenRef = useRef(0); // guards async ETA patches against a newer popup
   // Latest crowding/down, read inside imperative popup builders without forcing a map redraw.
   const capRef = useRef([]);
@@ -175,6 +180,7 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
           .catch(() => null);
         if (d && !d.error) {
           detailCacheRef.current.set(code, d);
+          setDetailsVersion((v) => v + 1); // wake the nearest-stops computation
           return d;
         }
         return null;
@@ -381,72 +387,90 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
       routeOverlaysRef.current = [];
       vehicleMarkersRef.current = [];
       userMarkerRef.current = null;
+      accuracyCircleRef.current = null;
     }
   }, [view]);
 
-  // Center on the user's location, drop a "you are here" marker, and point out the nearest stop.
-  const locateUser = useCallback(() => {
-    setLocateError('');
-    if (!navigator.geolocation) {
-      setLocateError('Location is not available on this device.');
+  // 6) The user's blue dot + accuracy halo — always on while their location is known (permission
+  //    granted, watch running), updated in place on every fix. No zooming or panning here: the dot
+  //    follows the user; the viewport stays wherever the rider put it.
+  useEffect(() => {
+    if (view !== 'map' || !mapLoaded || !mapRef.current || !window.google || !userLocation) return;
+    const map = mapRef.current;
+    const here = { lat: userLocation.lat, lng: userLocation.lng };
+    const radius = Math.min(Math.max(userLocation.accuracy || 30, 15), 300); // clamp absurd fixes
+
+    if (!userMarkerRef.current) {
+      userMarkerRef.current = new window.google.maps.Marker({
+        position: here,
+        map,
+        title: 'You are here',
+        zIndex: 2000,
+        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: USER_DOT, fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 },
+      });
+    } else {
+      userMarkerRef.current.setPosition(here);
+    }
+    if (!accuracyCircleRef.current) {
+      accuracyCircleRef.current = new window.google.maps.Circle({
+        map,
+        center: here,
+        radius,
+        fillColor: USER_DOT,
+        fillOpacity: 0.15,
+        strokeWeight: 0,
+        clickable: false,
+        zIndex: 1,
+      });
+    } else {
+      accuracyCircleRef.current.setCenter(here);
+      accuracyCircleRef.current.setRadius(radius);
+    }
+  }, [userLocation, mapLoaded, view]);
+
+  // 7) The user's closest stops (top 3 across all routes, deduped, with every route that serves
+  //    them) — the sidebar's "Closest to you" section. Recomputed when the user moves or more route
+  //    details land; cheap (a few hundred stops).
+  useEffect(() => {
+    if (!userLocation || detailCacheRef.current.size === 0) {
+      setNearestStops([]);
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const map = mapRef.current;
-        if (!map || !window.google) return;
-        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-
-        if (userMarkerRef.current) userMarkerRef.current.setMap(null);
-        userMarkerRef.current = new window.google.maps.Marker({
-          position: here,
-          map,
-          title: 'You are here',
-          zIndex: 2000,
-          icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: USER_DOT, fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 },
-        });
-
-        // Nearest stop, preferring routes with buses actually in service — pointing a night rider
-        // at a stop nothing will visit for hours is worse than a slightly longer walk. Falls back
-        // to any stop (flagged in the popup) when nothing is running.
-        const outSet = outOfServiceRef.current;
-        let nearest = null;
-        let nearestAny = null;
-        for (const [code, detail] of detailCacheRef.current.entries()) {
-          const inService = !outSet.has(code);
-          for (const stop of detail.stops || []) {
-            const m = haversineMeters(here.lat, here.lng, stop.latitude, stop.longitude);
-            if (!nearestAny || m < nearestAny.m) nearestAny = { stop, m, inService };
-            if (inService && (!nearest || m < nearest.m)) nearest = { stop, m, inService };
-          }
-        }
-        if (!nearest) nearest = nearestAny;
-
-        const bounds = new window.google.maps.LatLngBounds();
-        bounds.extend(here);
-        if (nearest) {
-          bounds.extend({ lat: nearest.stop.latitude, lng: nearest.stop.longitude });
-          map.fitBounds(bounds, 90);
-          if (infoWindowRef.current) {
-            ++popupTokenRef.current;
-            infoWindowRef.current.setContent(
-              `<div style="padding:6px 8px;font-family:system-ui,sans-serif;line-height:1.45">
-                 <strong>${nearest.stop.name}</strong>
-                 <div style="font-size:13px;color:#666;margin-top:2px">Nearest stop, ${Math.round(nearest.m)} m away${nearest.inService ? '' : ' — no buses currently serve it'}</div>
-               </div>`,
-            );
-            infoWindowRef.current.setPosition({ lat: nearest.stop.latitude, lng: nearest.stop.longitude });
-            infoWindowRef.current.open(map);
-          }
+    const byKey = new Map();
+    for (const [code, detail] of detailCacheRef.current.entries()) {
+      for (const stop of detail.stops || []) {
+        const key = stop.id || stop.name;
+        const existing = byKey.get(key);
+        if (existing) {
+          if (!existing.routes.includes(code)) existing.routes.push(code);
         } else {
-          map.panTo(here);
-          map.setZoom(16);
+          byKey.set(key, {
+            id: stop.id,
+            name: stop.name,
+            routes: [code],
+            meters: Math.round(haversineMeters(userLocation.lat, userLocation.lng, stop.latitude, stop.longitude)),
+          });
         }
-      },
-      () => setLocateError('Location unavailable. Allow location access and try again.'),
-      { enableHighAccuracy: true, timeout: 8000 },
+      }
+    }
+    setNearestStops(
+      [...byKey.values()]
+        .sort((a, b) => a.meters - b.meters)
+        .slice(0, 3),
     );
-  }, []);
+  }, [userLocation, detailsVersion]);
+
+  // Pan (never zoom) to the user. The permission prompt, watch, and dot all hang off the shared
+  // location hook — this button's only remaining job is "show me where I am on this map".
+  const locateUser = useCallback(async () => {
+    setLocateError('');
+    const here = userLocation ?? (requestLocation ? await requestLocation() : null);
+    if (!here) {
+      setLocateError('Location unavailable. Allow location access and try again.');
+      return;
+    }
+    mapRef.current?.panTo({ lat: here.lat, lng: here.lng }); // zoom level untouched, deliberately
+  }, [userLocation, requestLocation]);
 
   return {
     mapLoaded,
@@ -463,5 +487,6 @@ export function useGoogleMap(view, { capacity = [], down = [] } = {}) {
     setHighlightStops,
     locateUser,
     locateError,
+    nearestStops,
   };
 }

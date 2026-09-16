@@ -11,7 +11,9 @@ let msgSeq = 0; // uniquifies streamed-bubble ids within a session
 // state: crowding/down context is read server-side from the report store, so the request carries
 // only the conversation. `generateLocalFallback` remains the offline responder (uses static route
 // data + the live aggregates passed in) for when the proxy is unreachable.
-export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityReport, submitBusDownReport, onUiDirective }) {
+// `getLocation` (optional) returns the user's opt-in {lat,lng} or null — resolved fresh per send so
+// the agent always gets the current position, never a stale one.
+export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityReport, submitBusDownReport, onUiDirective, getLocation }) {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
@@ -111,7 +113,7 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
     };
 
     try {
-      await streamAgent({ messages, onDelta, onEvent });
+      await streamAgent({ messages, location: getLocation?.() ?? null, onDelta, onEvent });
       if (!received) {
         // Same offline disclaimer as the throw path — an unlabeled fallback reads as a live answer.
         setChatMessages((prev) => [

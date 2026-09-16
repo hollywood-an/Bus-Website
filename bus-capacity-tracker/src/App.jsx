@@ -4,6 +4,7 @@ import { useReports } from './hooks/useReports';
 import { useGoogleMap } from './hooks/useGoogleMap';
 import { useChat } from './hooks/useChat';
 import { usePlanner } from './hooks/usePlanner';
+import { useUserLocation, roundCoord } from './hooks/useUserLocation';
 import { apiUrl } from './lib/api';
 import Header from './components/Header';
 import Nav from './components/Nav';
@@ -76,7 +77,14 @@ export default function BusCapacityTracker() {
 
   const planner = usePlanner();
   const reports = useReports();
-  const map = useGoogleMap(view, { capacity: reports.capacity, down: reports.down });
+  // Shared user location (permission is only ever requested from a user gesture — see the hook).
+  const userLoc = useUserLocation();
+  const map = useGoogleMap(view, {
+    capacity: reports.capacity,
+    down: reports.down,
+    userLocation: userLoc.location,
+    requestLocation: userLoc.requestLocation,
+  });
 
   useEffect(() => {
     if (view !== 'check') return;
@@ -118,6 +126,11 @@ export default function BusCapacityTracker() {
     submitCapacityReport: reports.submitCapacityReport,
     submitBusDownReport: reports.submitBusDownReport,
     onUiDirective: applyDirective,
+    // Rounded (~1m) coords, only while permission is granted — the assistant never prompts by itself.
+    getLocation: () =>
+      userLoc.status === 'granted' && userLoc.location
+        ? { lat: roundCoord(userLoc.location.lat), lng: roundCoord(userLoc.location.lng) }
+        : null,
   });
 
   return (
@@ -176,13 +189,15 @@ export default function BusCapacityTracker() {
               down={reports.down}
               locateUser={map.locateUser}
               locateError={map.locateError}
+              nearestStops={map.nearestStops}
+              hasLocation={Boolean(userLoc.location)}
               openReport={(code) => {
                 setReportRoute(code); // land on Report with this route preselected
                 navigate('report');
               }}
             />
           )}
-          {view === 'planner' && <PlannerView planner={planner} />}
+          {view === 'planner' && <PlannerView planner={planner} requestLocation={userLoc.requestLocation} />}
           {view === 'ai' && (
             <AiView
               chatMessages={chat.chatMessages}
@@ -193,6 +208,8 @@ export default function BusCapacityTracker() {
               pendingConfirm={chat.pendingConfirm}
               confirmPending={chat.confirmPending}
               cancelPending={chat.cancelPending}
+              locationStatus={userLoc.status}
+              requestLocation={userLoc.requestLocation}
             />
           )}
           {view === 'report' && (
