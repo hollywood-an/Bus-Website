@@ -50,6 +50,9 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
   const [outOfServiceKey, setOutOfServiceKey] = useState('');
   const outOfServiceRef = useRef(new Set()); // same data, readable inside stale-closure callbacks (locateUser)
   const [highlightedStops, setHighlightStops] = useState([]); // stop ids the agent asked to emphasize
+  // "Running" filter: show only in-service buses + their routes. Session-only (a transient view),
+  // unlike the persisted route selection. Peer of "All" — a route selection turns it off.
+  const [runningOnly, setRunningOnly] = useState(false);
   // Bumped whenever a route detail lands in the cache, so the nearest-stops computation re-runs
   // once the stops it needs actually exist (the cache itself is a ref and can't trigger effects).
   const [detailsVersion, setDetailsVersion] = useState(0);
@@ -190,8 +193,13 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
       routeOverlaysRef.current = [];
 
       const sel = selectedKey ? selectedKey.split('|') : [];
-      const codes = sel.length === 0 ? routes.map((r) => r.code) : sel;
       const outSet = new Set(outOfServiceKey ? outOfServiceKey.split('|') : []);
+      // "Running" draws only in-service routes' lines; otherwise the selection (empty = all routes).
+      const codes = runningOnly
+        ? routes.map((r) => r.code).filter((c) => !outSet.has(c))
+        : sel.length === 0
+          ? routes.map((r) => r.code)
+          : sel;
       const bounds = new window.google.maps.LatLngBounds();
       const highlightBounds = new window.google.maps.LatLngBounds();
       const highlightSet = new Set(highlightedStops);
@@ -289,7 +297,7 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
       cancelled = true;
       drawn.forEach((o) => o.setMap(null));
     };
-  }, [mapLoaded, routes, selectedKey, outOfServiceKey, view, colorFor, nameFor, crowdingHtml, isDown, highlightedStops]);
+  }, [mapLoaded, routes, selectedKey, outOfServiceKey, runningOnly, view, colorFor, nameFor, crowdingHtml, isDown, highlightedStops]);
 
   // 4) Poll ALL vehicles on a fixed cadence while on the map view. Selection filtering happens in
   //    the draw effect below, so chip toggles re-filter instantly and never reset the poll timer,
@@ -338,7 +346,8 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
     vehicleMarkersRef.current = [];
 
     vehicles
-      .filter((v) => sel.length === 0 || sel.includes(v.route))
+      // "Running" keeps only buses in passenger service (predicting an upcoming stop).
+      .filter((v) => (runningOnly ? v.nextStops?.length > 0 : sel.length === 0 || sel.includes(v.route)))
       .forEach((v) => {
         const marker = new window.google.maps.Marker({
           position: { lat: v.latitude, lng: v.longitude },
@@ -376,7 +385,7 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
         });
         vehicleMarkersRef.current.push(marker);
       });
-  }, [vehicles, selectedKey, mapLoaded, view, colorFor, nameFor, crowdingHtml]);
+  }, [vehicles, selectedKey, runningOnly, mapLoaded, view, colorFor, nameFor, crowdingHtml]);
 
   // 5) Tear down the map instance when leaving the map view (its DOM node unmounts), so re-entry
   //    rebuilds against a fresh #google-map element.
@@ -482,5 +491,7 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
     setHighlightStops,
     locateUser,
     nearestStops,
+    runningOnly,
+    setRunningOnly,
   };
 }

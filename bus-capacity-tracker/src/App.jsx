@@ -16,6 +16,7 @@ import MapView from './components/MapView';
 import PlannerView from './components/PlannerView';
 import AiView from './components/AiView';
 import HomeView from './components/HomeView';
+import LocationHelpSheet from './components/LocationHelpSheet';
 
 function Points({ value }) {
   return (
@@ -133,6 +134,10 @@ export default function BusCapacityTracker() {
         : null,
   });
 
+  // The iOS-blocked case is handled by the guided LocationHelpSheet (below), so suppress the small
+  // inline banner for it — every other location error still shows the concise inline message.
+  const inlineLocationError = userLoc.errorKind === 'ios-blocked' ? '' : userLoc.errorMessage;
+
   return (
     <div className="min-h-screen bg-paper text-ink">
       {/* mobile top bar */}
@@ -188,9 +193,11 @@ export default function BusCapacityTracker() {
               capacity={reports.capacity}
               down={reports.down}
               locateUser={map.locateUser}
-              locateError={userLoc.errorMessage}
+              locateError={inlineLocationError}
               nearestStops={map.nearestStops}
               hasLocation={Boolean(userLoc.location)}
+              runningOnly={map.runningOnly}
+              setRunningOnly={map.setRunningOnly}
               openReport={(code) => {
                 setReportRoute(code); // land on Report with this route preselected
                 navigate('report');
@@ -198,7 +205,7 @@ export default function BusCapacityTracker() {
             />
           )}
           {view === 'planner' && (
-            <PlannerView planner={planner} requestLocation={userLoc.requestLocation} locationError={userLoc.errorMessage} />
+            <PlannerView planner={planner} requestLocation={userLoc.requestLocation} locationError={inlineLocationError} />
           )}
           {view === 'ai' && (
             <AiView
@@ -212,7 +219,7 @@ export default function BusCapacityTracker() {
               cancelPending={chat.cancelPending}
               locationStatus={userLoc.status}
               requestLocation={userLoc.requestLocation}
-              locationError={userLoc.errorMessage}
+              locationError={inlineLocationError}
             />
           )}
           {view === 'report' && (
@@ -239,6 +246,7 @@ export default function BusCapacityTracker() {
       <Nav view={view} setView={navigate} variant="tabs" />
       <Toast notification={reports.notification} />
       <RewardOverlay showReward={reports.showReward} />
+      <LocationHelpSheet open={userLoc.errorKind === 'ios-blocked'} onClose={userLoc.dismissError} />
     </div>
   );
 }
