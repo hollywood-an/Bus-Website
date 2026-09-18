@@ -5,20 +5,31 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 const isIOS = () =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-// Turn a GeolocationPositionError code into copy that actually tells the user how to fix it. The old
-// generic "allow location in your browser" was actively misleading on iOS: the real toggle lives in
-// iOS Settings → Location Services → Safari Websites, not in Safari's own settings. `code` 1 =
-// PERMISSION_DENIED (often the OS toggle on iOS, where Safari can't even prompt), 2 = unavailable,
-// 3 = timeout; missing geolocation is `null`.
-function locationHelp(code) {
+// Classify a GeolocationPositionError into (kind, message). `code` 1 = PERMISSION_DENIED (on iOS this
+// is usually the OS toggle, where Safari can't even prompt), 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT;
+// missing geolocation is `null`.
+//   'ios-blocked' — iOS + denied/unavailable: needs the iOS Location Services setting. The UI shows a
+//                   guided card for this (a website can't open Settings or trigger the native prompt).
+//   'blocked'     — non-iOS denied: browser site-settings guidance.
+//   'unavailable' — timeout / no geolocation / transient.
+// The old generic "allow location in your browser" was actively misleading on iOS: the real toggle is
+// in iOS Settings → Location Services → Safari Websites, not Safari's own settings.
+function classifyLocationError(code) {
   if (isIOS() && (code === 1 || code === 2)) {
-    return 'Location is turned off for Safari. Turn it on in Settings → Privacy & Security → Location Services → Safari Websites, then reload and tap again.';
+    return {
+      kind: 'ios-blocked',
+      message:
+        'Location is turned off for Safari. Turn it on in Settings → Privacy & Security → Location Services → Safari Websites, then reload and tap again.',
+    };
   }
   if (code === 1) {
-    return "Location is blocked for this site. Allow it in your browser's site settings (the lock/aA icon in the address bar), then try again.";
+    return {
+      kind: 'blocked',
+      message: "Location is blocked for this site. Allow it in your browser's site settings (the lock/aA icon in the address bar), then try again.",
+    };
   }
-  if (code === 3) return 'Getting your location took too long. Try again.';
-  return 'Couldn’t get your location — make sure Location Services is on for your browser, then try again.';
+  if (code === 3) return { kind: 'unavailable', message: 'Getting your location took too long. Try again.' };
+  return { kind: 'unavailable', message: 'Couldn’t get your location — make sure Location Services is on for your browser, then try again.' };
 }
 
 // The one source of truth for the user's location, shared by the Map (blue dot + nearest stops),
@@ -33,6 +44,7 @@ export function useUserLocation() {
   const [location, setLocation] = useState(null); // { lat, lng, accuracy } or null
   const [status, setStatus] = useState('unknown'); // unknown | prompt | granted | denied | unavailable
   const [errorMessage, setErrorMessage] = useState(''); // actionable copy when a fix fails ('' when fine)
+  const [errorKind, setErrorKind] = useState(''); // '' | 'ios-blocked' | 'blocked' | 'unavailable'
   const watchIdRef = useRef(null);
   // Mirror of `location` readable inside requestLocation without stale-closure issues.
   const locationRef = useRef(null);
@@ -42,7 +54,8 @@ export function useUserLocation() {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         setStatus('granted');
-        setErrorMessage(''); // a live fix clears any prior "blocked" banner
+        setErrorMessage(''); // a live fix clears any prior "blocked" banner/card
+        setErrorKind('');
         const here = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
         locationRef.current = here;
         setLocation(here);
@@ -103,8 +116,10 @@ export function useUserLocation() {
           return;
         }
         if (!navigator.geolocation) {
+          const { kind, message } = classifyLocationError(null);
           setStatus('unavailable');
-          setErrorMessage(locationHelp(null));
+          setErrorKind(kind);
+          setErrorMessage(message);
           resolve(null);
           return;
         }
@@ -113,6 +128,7 @@ export function useUserLocation() {
             const here = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
             setStatus('granted');
             setErrorMessage('');
+            setErrorKind('');
             locationRef.current = here;
             setLocation(here);
             startWatch();
@@ -124,8 +140,10 @@ export function useUserLocation() {
               resolve(locationRef.current);
               return;
             }
+            const { kind, message } = classifyLocationError(err?.code);
             setStatus(err?.code === 1 ? 'denied' : 'unavailable');
-            setErrorMessage(locationHelp(err?.code));
+            setErrorKind(kind);
+            setErrorMessage(message);
             resolve(null);
           },
           { enableHighAccuracy: false, maximumAge: 60000, timeout: 10000 },
@@ -134,7 +152,13 @@ export function useUserLocation() {
     [startWatch],
   );
 
-  return { location, status, errorMessage, requestLocation };
+  // Dismiss the current error (the guided card's "Not now"); a later attempt re-populates it.
+  const dismissError = useCallback(() => {
+    setErrorMessage('');
+    setErrorKind('');
+  }, []);
+
+  return { location, status, errorMessage, errorKind, dismissError, requestLocation };
 }
 
 // ~1m precision — plenty for stops/trips, and what we send to the server (never the raw fix).

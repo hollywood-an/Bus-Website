@@ -28,6 +28,8 @@ export default function MapView({
   openReport,
   nearestStops = [],
   hasLocation = false,
+  runningOnly = false,
+  setRunningOnly = () => {},
 }) {
   const [stopCount, setStopCount] = useState(null);
 
@@ -88,19 +90,38 @@ export default function MapView({
           (Crowding/down status lives in the panel, popups, and the Check view.) */}
       <div className="mb-3 flex flex-wrap gap-1.5">
         <button
-          onClick={() => setSelectedRoutes([])}
-          aria-pressed={selectedRoutes.length === 0}
+          onClick={() => {
+            setSelectedRoutes([]);
+            setRunningOnly(false);
+          }}
+          aria-pressed={selectedRoutes.length === 0 && !runningOnly}
           className="min-h-11 rounded-full px-3 py-2 text-xs font-bold transition-colors"
-          style={selectedRoutes.length === 0 ? { backgroundColor: 'var(--ink)', color: '#fff' } : { backgroundColor: 'var(--surface-2)', color: 'var(--ink-soft)' }}
+          style={selectedRoutes.length === 0 && !runningOnly ? { backgroundColor: 'var(--ink)', color: '#fff' } : { backgroundColor: 'var(--surface-2)', color: 'var(--ink-soft)' }}
         >
           All
+        </button>
+        {/* Running: only in-service buses + their route lines. Green = "live/in service". */}
+        <button
+          onClick={() => {
+            setSelectedRoutes([]);
+            setRunningOnly(true);
+          }}
+          aria-pressed={runningOnly}
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition-colors"
+          style={runningOnly ? { backgroundColor: 'var(--ok)', color: '#fff' } : { backgroundColor: 'var(--surface-2)', color: 'var(--ink-soft)' }}
+        >
+          <span aria-hidden className="h-2 w-2 rounded-full ring-1 ring-white/80" style={{ backgroundColor: runningOnly ? '#ffffff' : 'var(--ok)' }} />
+          Running
         </button>
         {routes.map((r) => {
           const active = selectedRoutes.includes(r.code);
           return (
             <button
               key={r.code}
-              onClick={() => toggleRoute(r.code)}
+              onClick={() => {
+                setRunningOnly(false);
+                toggleRoute(r.code);
+              }}
               title={r.name}
               aria-pressed={active}
               className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide transition-colors"
@@ -119,6 +140,13 @@ export default function MapView({
 
       {locateError && (
         <div className="mb-3 rounded-lg border border-line bg-surface-2 px-3 py-2 text-xs font-semibold text-ink-soft">{locateError}</div>
+      )}
+
+      {/* Running filter with nothing in service — honest off-peak state (the map clears). */}
+      {runningOnly && vehiclesLoaded && !vehicles.some((v) => v.nextStops?.length > 0) && (
+        <div className="mb-3 rounded-lg border border-line bg-surface-2 px-3 py-2 text-xs font-semibold text-ink-soft">
+          No buses are in service right now. Tap “All” to see routes and stops.
+        </div>
       )}
 
       <div className="md:flex md:gap-4">
