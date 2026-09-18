@@ -126,12 +126,11 @@ function BusItinerary({ trip }) {
 
 // Free-text, geocoded planning. All state lives in usePlanner (App-level) so a planned trip
 // survives view switches; this component is presentational. Restyled to the Bold Buckeye system.
-export default function PlannerView({ planner, requestLocation }) {
+export default function PlannerView({ planner, requestLocation, locationError = '' }) {
   const { fromLocation, setFromLocation, toLocation, setToLocation, setFromCoords, trip, mode, setMode, loading, error, plan } = planner;
 
   const fromRef = useRef(null);
   const toRef = useRef(null);
-  const [locError, setLocError] = useState(''); // "Your location" pick failed (permission denied etc.)
 
   const geometry = tripGeometry(trip);
 
@@ -190,12 +189,8 @@ export default function PlannerView({ planner, requestLocation }) {
               topAction={{
                 label: 'Your location',
                 onPick: async () => {
-                  setLocError('');
-                  const here = await requestLocation?.();
-                  if (!here) {
-                    setLocError('Location unavailable. Allow location access in your browser, or type a starting point.');
-                    return;
-                  }
+                  const here = await requestLocation?.(); // on failure the shared hook sets locationError
+                  if (!here) return;
                   setFromCoords(here);
                   setFromLocation('Your location');
                   if (toLocation.trim()) plan('Your location', toLocation, here);
@@ -245,8 +240,8 @@ export default function PlannerView({ planner, requestLocation }) {
         </button>
       </div>
 
-      {(error || locError) && (
-        <div className="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-sm font-semibold text-ink-soft">{error || locError}</div>
+      {(error || locationError) && (
+        <div className="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-sm font-semibold text-ink-soft">{error || locationError}</div>
       )}
 
       {!trip && <CampusPreviewMap />}

@@ -50,7 +50,6 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
   const [outOfServiceKey, setOutOfServiceKey] = useState('');
   const outOfServiceRef = useRef(new Set()); // same data, readable inside stale-closure callbacks (locateUser)
   const [highlightedStops, setHighlightStops] = useState([]); // stop ids the agent asked to emphasize
-  const [locateError, setLocateError] = useState('');
   // Bumped whenever a route detail lands in the cache, so the nearest-stops computation re-runs
   // once the stops it needs actually exist (the cache itself is a ref and can't trigger effects).
   const [detailsVersion, setDetailsVersion] = useState(0);
@@ -460,16 +459,12 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
     );
   }, [userLocation, detailsVersion]);
 
-  // Pan (never zoom) to the user. The permission prompt, watch, and dot all hang off the shared
-  // location hook — this button's only remaining job is "show me where I am on this map".
+  // Pan (never zoom) to the user. The permission prompt, watch, dot, AND the error banner all hang
+  // off the shared location hook (useUserLocation owns errorMessage) — this button's only remaining
+  // job is "show me where I am on this map".
   const locateUser = useCallback(async () => {
-    setLocateError('');
     const here = userLocation ?? (requestLocation ? await requestLocation() : null);
-    if (!here) {
-      setLocateError('Location unavailable. Allow location access and try again.');
-      return;
-    }
-    mapRef.current?.panTo({ lat: here.lat, lng: here.lng }); // zoom level untouched, deliberately
+    if (here) mapRef.current?.panTo({ lat: here.lat, lng: here.lng }); // zoom untouched, deliberately
   }, [userLocation, requestLocation]);
 
   return {
@@ -486,7 +481,6 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
     vehiclesError,
     setHighlightStops,
     locateUser,
-    locateError,
     nearestStops,
   };
 }

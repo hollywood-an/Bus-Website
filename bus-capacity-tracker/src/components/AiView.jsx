@@ -17,6 +17,7 @@ export default function AiView({
   cancelPending,
   locationStatus = 'unknown',
   requestLocation,
+  locationError = '',
 }) {
   const waiting = isAiThinking && chatMessages[chatMessages.length - 1]?.role !== 'assistant';
 
@@ -142,13 +143,17 @@ export default function AiView({
       ) : (
         locationStatus !== 'unavailable' &&
         requestLocation && (
-          <button
-            type="button"
-            onClick={() => requestLocation()}
-            className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-ink-soft transition-colors hover:border-scarlet hover:text-scarlet-ink"
-          >
-            <MapPin size={14} /> Share location for nearby answers
-          </button>
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => requestLocation()}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-ink-soft transition-colors hover:border-scarlet hover:text-scarlet-ink"
+            >
+              <MapPin size={14} /> Share location for nearby answers
+            </button>
+            {/* When a share attempt was blocked (e.g. iOS Location Services off), tell them how to fix it. */}
+            {locationError && <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-muted">{locationError}</p>}
+          </div>
         )
       )}
 

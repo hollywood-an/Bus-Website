@@ -188,7 +188,7 @@ export default function BusCapacityTracker() {
               capacity={reports.capacity}
               down={reports.down}
               locateUser={map.locateUser}
-              locateError={map.locateError}
+              locateError={userLoc.errorMessage}
               nearestStops={map.nearestStops}
               hasLocation={Boolean(userLoc.location)}
               openReport={(code) => {
@@ -197,7 +197,9 @@ export default function BusCapacityTracker() {
               }}
             />
           )}
-          {view === 'planner' && <PlannerView planner={planner} requestLocation={userLoc.requestLocation} />}
+          {view === 'planner' && (
+            <PlannerView planner={planner} requestLocation={userLoc.requestLocation} locationError={userLoc.errorMessage} />
+          )}
           {view === 'ai' && (
             <AiView
               chatMessages={chat.chatMessages}
@@ -210,6 +212,7 @@ export default function BusCapacityTracker() {
               cancelPending={chat.cancelPending}
               locationStatus={userLoc.status}
               requestLocation={userLoc.requestLocation}
+              locationError={userLoc.errorMessage}
             />
           )}
           {view === 'report' && (
