@@ -4,6 +4,7 @@ import CapacityMeter from './CapacityMeter';
 import RouteChip from './RouteChip';
 import { CAPACITY_LEVELS } from '../data/capacity';
 import { statusFor } from '../lib/serviceStatus';
+import { isVehicleRunning } from '../lib/vehicleService';
 import { apiUrl } from '../lib/api';
 import { timeAgo, fmtEta } from '../lib/format';
 
@@ -143,7 +144,7 @@ export default function MapView({
       )}
 
       {/* Running filter with nothing in service — honest off-peak state (the map clears). */}
-      {runningOnly && vehiclesLoaded && !vehicles.some((v) => v.nextStops?.length > 0) && (
+      {runningOnly && vehiclesLoaded && !vehicles.some((v) => isVehicleRunning(v)) && (
         <div className="mb-3 rounded-lg border border-line bg-surface-2 px-3 py-2 text-xs font-semibold text-ink-soft">
           No buses are in service right now. Tap “All” to see routes and stops.
         </div>
@@ -233,8 +234,10 @@ export default function MapView({
 
 // Mirrors the server's routeInService: end-of-service vehicles linger in the live feed with no
 // predicted stops ("Last Pick Up" deadheads), so bus count alone can't be trusted.
+// Provider-aware (see isVehicleRunning): a route is in service if any bus is running — predicting a
+// stop (clever) OR moving/fresh (DoubleMap routes like WMC that never send ETAs).
 function anyInService(routeVehicles) {
-  return routeVehicles.some((v) => v.nextStops?.length > 0);
+  return routeVehicles.some((v) => isVehicleRunning(v));
 }
 
 // One bus's destination + its next (up to 3) stops with ETAs. nextStops is real feed data when
@@ -313,7 +316,11 @@ function RouteDetail({ route, cap, down, routeVehicles = [], vehicleSource, stop
           </div>
         ) : (
           <div className="mt-1 text-sm text-muted">
-            {routeVehicles.length ? 'Buses are tracked but not in passenger service.' : 'No buses on this route right now.'}
+            {inService
+              ? 'Live bus positions shown — this route doesn’t report stop ETAs.'
+              : routeVehicles.length
+                ? 'Buses are tracked but not in passenger service.'
+                : 'No buses on this route right now.'}
           </div>
         )}
       </div>

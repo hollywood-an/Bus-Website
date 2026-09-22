@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import { loadMaps } from '../lib/loadMaps';
 import { apiUrl } from '../lib/api';
+import { isVehicleRunning } from '../lib/vehicleService';
 
 // The hero's right-hand visual: a small, non-interactive campus map with the REAL live buses moving on
 // it (route-colored arrows, repositioned every 15s from the feed). "Show, don't tell" — the product is
@@ -10,10 +11,11 @@ import { apiUrl } from '../lib/api';
 // recipe as the full Campus Map (useGoogleMap).
 //
 // Honest-signal rules (DESIGN principle 3, and the feed's real behavior): the server always returns
-// vehicles (last-known-good -> fixtures) and end-of-service buses LINGER with empty nextStops, so
-// `vehicles.length` is not "buses running". The truth test is `nextStops?.length > 0`, and we never label
-// the map "live" when the feed is on mock data. If Maps can't load at all, we fall back to the static
-// `fallback` art so the hero always looks intentional.
+// vehicles (last-known-good -> fixtures) and end-of-service buses LINGER, so `vehicles.length` is not
+// "buses running". The truth test is provider-aware (isVehicleRunning): a clever bus predicting a stop,
+// or a DoubleMap bus moving/freshly-reporting. We never label the map "live" when the feed is on mock
+// data. If Maps can't load at all, we fall back to the static `fallback` art so the hero always looks
+// intentional.
 const POLL_MS = 15000; // matches useGoogleMap's VEHICLE_POLL_MS — the feed's own cadence
 const CAMPUS_CENTER = { lat: 40.0017, lng: -83.0197 }; // FALLBACK_CENTER, the campus core
 
@@ -173,8 +175,9 @@ export default function HeroLiveMap({ routes = [], onOpenMap, fallback = null })
     };
   }, [vehicles, mapReady, colorFor]);
 
-  // Honest status for the overlay badge. Buses in passenger service = those predicting next stops.
-  const running = vehicles.filter((v) => v.nextStops?.length > 0).length;
+  // Honest status for the overlay badge. Buses in passenger service — provider-aware (predicting a
+  // stop, or moving/fresh for DoubleMap routes that never send ETAs); see isVehicleRunning.
+  const running = vehicles.filter((v) => isVehicleRunning(v)).length;
   const isMock = source === 'mock' || (loaded && !live);
   const badge = !loaded
     ? null

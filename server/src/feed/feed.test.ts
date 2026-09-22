@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseRoutes, parseRouteDetail, parseVehicles } from './parse';
 import * as cache from './cache';
-import { getVehicles, vehicleSource, routeInService } from './vehicles';
+import { getVehicles, vehicleSource, routeInService, isVehicleRunning } from './vehicles';
 
 describe('parse (defensive coercion of an untrusted feed)', () => {
   it('parseRoutes upper-cases codes and drops junk', () => {
@@ -107,6 +107,43 @@ describe('parse (defensive coercion of an untrusted feed)', () => {
     });
     expect(v[0]!.nextStops).toBeUndefined();
     expect(v[1]!.nextStops).toBeUndefined();
+  });
+
+  it('parseVehicles captures the provider tag and normalizes both `updated` formats to ms epoch', () => {
+    const v = parseVehicles('wmc', {
+      data: {
+        vehicles: [
+          { latitude: 40, longitude: -83, service: 'double', speed: 11, updated: '1790059008' }, // epoch seconds (DoubleMap)
+          { latitude: 41, longitude: -83, service: 'clever', updated: '2026-09-22T06:36:00.000Z' }, // ISO (Clever)
+          { latitude: 42, longitude: -83, updated: 'garbage' }, // junk -> undefined
+        ],
+      },
+    });
+    expect(v[0]).toMatchObject({ service: 'double', speed: 11, updatedAt: 1_790_059_008_000 });
+    expect(v[1]).toMatchObject({ service: 'clever', updatedAt: Date.parse('2026-09-22T06:36:00.000Z') });
+    expect(v[2]!.service).toBeUndefined();
+    expect(v[2]!.updatedAt).toBeUndefined();
+  });
+});
+
+describe('isVehicleRunning (provider-aware passenger-service check)', () => {
+  const now = 1_790_060_000_000;
+  const at = (o: object) => ({ latitude: 1, longitude: 1, ...o });
+
+  it('clever routes must be predicting a stop (a deadhead with none is NOT running)', () => {
+    expect(isVehicleRunning(at({ service: 'clever', nextStops: [{ name: 'X', etaMin: 2 }] }), now)).toBe(true);
+    expect(isVehicleRunning(at({ service: 'clever', speed: 20, updatedAt: now }), now)).toBe(false);
+  });
+
+  it('DoubleMap routes (never predict) run when moving OR freshly updated, not when stale/parked', () => {
+    expect(isVehicleRunning(at({ service: 'double', speed: 11, updatedAt: now - 10_000 }), now)).toBe(true); // moving
+    expect(isVehicleRunning(at({ service: 'double', speed: 0, updatedAt: now - 60_000 }), now)).toBe(true); // stopped but fresh
+    expect(isVehicleRunning(at({ service: 'double', speed: 0, updatedAt: now - 210_000 }), now)).toBe(false); // stale ghost (>3min)
+  });
+
+  it('mock/unknown providers fall through to the motion branch', () => {
+    expect(isVehicleRunning(at({ speed: 16 }), now)).toBe(true); // mock bus (no service, moving)
+    expect(isVehicleRunning(at({ service: 'x', speed: 0 }), now)).toBe(false); // parked, no timestamp
   });
 });
 

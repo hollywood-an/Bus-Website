@@ -54,6 +54,12 @@ export interface Vehicle {
   destination?: string;
   distance?: number;
   nextStops?: NextStop[];
+  // Feed provider tag: 'clever' (Clever Devices — sends per-stop predictions) or 'double' (DoubleMap —
+  // never does). Drives provider-aware in-service detection (see vehicles.ts isVehicleRunning).
+  service?: string;
+  // Ms epoch of the vehicle's last GPS report, normalized from the feed's per-provider format
+  // (ISO-8601 vs epoch seconds) in parse.ts. Used as the freshness signal for prediction-less routes.
+  updatedAt?: number;
 }
 
 export type VehicleSource = 'live' | 'mock';

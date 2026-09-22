@@ -1,5 +1,5 @@
 import { getRoutes, getRouteDetail } from './cache';
-import { getVehicles, vehicleSource } from './vehicles';
+import { getVehicles, vehicleSource, isVehicleRunning } from './vehicles';
 import { haversineMeters } from '../geo/util';
 import type { Stop, Vehicle } from './types';
 
@@ -64,9 +64,11 @@ export function estimateArrivals(stopInput: unknown, routeInput?: unknown): Arri
     const detail = getRouteDetail(code);
     const stop = detail?.stops.find((s) => s.name.toLowerCase().includes(stopQuery));
     if (!stop) continue;
-    // Live deadheads (no predicted stops) are not coming back — never estimate from them.
+    // Live deadheads (buses not in passenger service) are not coming back — never estimate from them.
+    // Provider-aware: keeps moving DoubleMap buses (which never predict) while still dropping clever
+    // deadheads. See isVehicleRunning.
     const all = getVehicles(code);
-    const vehicles = source === 'live' ? all.filter((v) => v.nextStops?.length) : all;
+    const vehicles = source === 'live' ? all.filter((v) => isVehicleRunning(v)) : all;
     let nearest: { etaMin: number; meters: number } | null = null;
     for (const v of vehicles) {
       const meters = haversineMeters(v.latitude, v.longitude, stop.latitude, stop.longitude);
