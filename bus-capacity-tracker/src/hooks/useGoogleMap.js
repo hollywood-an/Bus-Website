@@ -3,6 +3,7 @@ import { loadMaps } from '../lib/loadMaps';
 import { CAPACITY_LEVELS } from '../data/capacity';
 import { timeAgo, fmtEta } from '../lib/format';
 import { apiUrl } from '../lib/api';
+import { isVehicleRunning } from '../lib/vehicleService';
 
 // Drives the campus map from the server feed (Phase 1.5). Route list, stops, and polylines come
 // from /api/routes[/:code]; vehicles from /api/vehicles (live or mock, server's choice). Crowding +
@@ -45,8 +46,8 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
   const [vehicles, setVehicles] = useState([]); // latest fetched positions (for the detail panel count)
   const [vehiclesLoaded, setVehiclesLoaded] = useState(false); // first poll landed ([] can then be truthful)
   const [vehiclesError, setVehiclesError] = useState(false); // first poll FAILED — show retrying copy, not eternal "checking…"
-  // Routes with no bus predicting an upcoming stop (deadheads/none) — joined key, same value-stable
-  // pattern as selectedKey, so the route-draw effect only re-fires when the set actually changes.
+  // Routes with no bus in passenger service (provider-aware; see isVehicleRunning) — joined key, same
+  // value-stable pattern as selectedKey, so the route-draw effect only re-fires when the set changes.
   const [outOfServiceKey, setOutOfServiceKey] = useState('');
   const outOfServiceRef = useRef(new Set()); // same data, readable inside stale-closure callbacks (locateUser)
   const [highlightedStops, setHighlightStops] = useState([]); // stop ids the agent asked to emphasize
@@ -320,10 +321,12 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
       const list = Array.isArray(d.vehicles) ? d.vehicles : [];
       setVehicles(list);
       setVehiclesLoaded(true);
-      const predicting = new Set(list.filter((v) => v.nextStops?.length > 0).map((v) => v.route));
+      // Provider-aware: a route is in service if any bus is running (clever→predicting a stop;
+      // DoubleMap→moving/fresh), so prediction-less routes like WMC aren't wrongly dimmed.
+      const running = new Set(list.filter((v) => isVehicleRunning(v)).map((v) => v.route));
       const outCodes = routes
         .map((r) => r.code)
-        .filter((c) => !predicting.has(c))
+        .filter((c) => !running.has(c))
         .sort();
       outOfServiceRef.current = new Set(outCodes);
       setOutOfServiceKey(outCodes.join('|'));
@@ -346,8 +349,8 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
     vehicleMarkersRef.current = [];
 
     vehicles
-      // "Running" keeps only buses in passenger service (predicting an upcoming stop).
-      .filter((v) => (runningOnly ? v.nextStops?.length > 0 : sel.length === 0 || sel.includes(v.route)))
+      // "Running" keeps only buses in passenger service (provider-aware — see isVehicleRunning).
+      .filter((v) => (runningOnly ? isVehicleRunning(v) : sel.length === 0 || sel.includes(v.route)))
       .forEach((v) => {
         const marker = new window.google.maps.Marker({
           position: { lat: v.latitude, lng: v.longitude },
@@ -369,9 +372,13 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
           ++popupTokenRef.current;
           const dest = v.destination ? ` to ${v.destination}` : '';
           const late = v.delayed ? '<div style="color:var(--warn);font-weight:600;margin-top:3px">Running late</div>' : '';
+          // ETA when the bus predicts one (clever); for a running-but-prediction-less bus (DoubleMap)
+          // say it's live without a fake ETA; only a truly idle bus reads "not in passenger service".
           const next = v.nextStops?.length
             ? `<div style="font-size:13px;color:#666;margin-top:4px">Next: ${v.nextStops[0].name} ${fmtEta(v.nextStops[0].etaMin)}</div>`
-            : '<div style="font-size:13px;color:#666;margin-top:4px">Not in passenger service</div>';
+            : isVehicleRunning(v)
+              ? '<div style="font-size:13px;color:#666;margin-top:4px">Live &mdash; no ETA reported</div>'
+              : '<div style="font-size:13px;color:#666;margin-top:4px">Not in passenger service</div>';
           infoWindowRef.current.setContent(
             `<div style="padding:6px 8px;font-family:system-ui,sans-serif;min-width:150px;line-height:1.45">
                <strong>${nameFor(v.route)}</strong> <span style="color:#888">(${v.route})</span>

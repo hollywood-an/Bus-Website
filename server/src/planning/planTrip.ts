@@ -161,7 +161,9 @@ async function bestBusOption(from: Place, to: Place): Promise<BusOption | null> 
   let best: { s: ScoredRoute; b: Candidate; a: Candidate; busMeters: number; intermediate: number; busSeconds: number; waitSeconds: number; totalSeconds: number } | null = null;
   for (const s of survivors) {
     const vehiclesAll = feed.getVehicles(s.route.code);
-    const activeVehicles = source === 'live' ? vehiclesAll.filter((v) => v.nextStops?.length) : vehiclesAll;
+    // Provider-aware "actively running" filter (see feed isVehicleRunning): keeps moving DoubleMap
+    // buses that never predict, still drops clever end-of-service deadheads.
+    const activeVehicles = source === 'live' ? vehiclesAll.filter((v) => feed.isVehicleRunning(v)) : vehiclesAll;
     const boards = withWalks(s.detail.stops, fromWalks);
     const alights = withWalks(s.detail.stops, toWalks);
     // Full-loop travel time for this route: how long a just-missed bus takes to come back around.

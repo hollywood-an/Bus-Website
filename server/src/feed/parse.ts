@@ -81,6 +81,8 @@ export function parseVehicles(code: string, raw: unknown): Vehicle[] {
         destination: cleanName(o.destination) || undefined,
         distance: isFiniteNum(o.distance) ? num(o.distance) : undefined,
         nextStops: parseNextStops(o.predictions),
+        service: str(o.service) || undefined,
+        updatedAt: parseUpdated(o.updated),
       };
     })
     .filter((v) => isFiniteNum(v.latitude) && isFiniteNum(v.longitude) && (v.latitude !== 0 || v.longitude !== 0));
@@ -104,4 +106,20 @@ function parseNextStops(raw: unknown): Vehicle['nextStops'] {
     .sort((a, b) => a.seconds - b.seconds) // the feed looks ordered, but don't trust it
     .map((s) => ({ id: s.id, name: s.name, etaMin: Math.round(s.seconds / 60) }));
   return stops.length ? stops : undefined;
+}
+
+// Each vehicle carries its last GPS-report time, but the format depends on the provider: Clever sends
+// ISO-8601 ("2026-09-22T06:36:00.000Z"); DoubleMap sends epoch SECONDS as a string ("1790059008").
+// Normalize both to ms epoch (used as the freshness signal for prediction-less routes). Junk → undefined.
+function parseUpdated(raw: unknown): number | undefined {
+  const fromEpoch = (n: number) => (Number.isFinite(n) ? (n > 1e12 ? n : n * 1000) : undefined);
+  if (typeof raw === 'number') return fromEpoch(raw);
+  if (typeof raw === 'string') {
+    const s = raw.trim();
+    if (!s) return undefined;
+    if (/^\d+$/.test(s)) return fromEpoch(Number(s)); // all-digits → epoch seconds (or ms)
+    const t = Date.parse(s); // otherwise an ISO-8601 timestamp
+    return Number.isFinite(t) ? t : undefined;
+  }
+  return undefined;
 }

@@ -15,11 +15,30 @@ export function getVehicles(code: string): Vehicle[] {
   return USE_MOCK ? mockVehicles(code) : cache.getCachedVehicles(code);
 }
 
-// In passenger service = at least one bus predicts an upcoming stop. End-of-service vehicles
-// linger in the feed with no predictions ("Last Pick Up" deadheads), so bus count alone can't be
-// trusted. Mock buses always predict, so demo mode is always in service.
+// How recently a prediction-less vehicle must have reported to still count as running — bridges stop
+// dwells and poll gaps without keeping a stale ghost alive. Tunable via env.
+const SERVICE_FRESH_MS = Number(process.env.OSU_SERVICE_FRESH_MS ?? 180_000);
+
+// Is one bus actively in passenger service? Provider-aware, because the two feed sources differ:
+//  - 'clever' (Clever Devices, e.g. Medical Center) broadcasts per-stop ETA predictions, so a bus with
+//    NONE is an end-of-service deadhead ("Last Pick Up") — not in service.
+//  - 'double' (DoubleMap, e.g. the Wexner Med Center shuttle) NEVER sends predictions, so the only
+//    signal is motion: a bus that's moving or just reported a fresh GPS fix is on a run. Routes that
+//    truly stop drop out of the feed entirely, so this can't falsely light up an idle route.
+// Mock buses (no `service`, always moving) fall through to the motion branch and stay in service.
+export function isVehicleRunning(v: Vehicle, now = Date.now()): boolean {
+  if ((v.nextStops?.length ?? 0) > 0) return true;
+  if (v.service === 'clever') return false; // predictions expected but absent → deadhead
+  const moving = (v.speed ?? 0) > 0;
+  const fresh = v.updatedAt != null && now - v.updatedAt < SERVICE_FRESH_MS;
+  return moving || fresh;
+}
+
+// A route is in passenger service if any of its buses is running (above). Bus count alone can't be
+// trusted — clever routes leave deadheads lingering with no predictions.
 export function routeInService(code: string): boolean {
-  return getVehicles(code).some((v) => (v.nextStops?.length ?? 0) > 0);
+  const now = Date.now();
+  return getVehicles(code).some((v) => isVehicleRunning(v, now));
 }
 
 // Mock buses modeled on the real schema, positioned by interpolating along the route's real stop
