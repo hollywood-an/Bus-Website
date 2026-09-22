@@ -9,7 +9,7 @@ you where a bus is but not whether you'll actually fit on it. Buckeye Transit ad
 fullness layer on top of the live feed, and puts an agent in front of both that can reason over live
 data, take actions (with confirmation), and operate the UI.
 
-**Live at [bus-website-iota.vercel.app](https://bus-website-iota.vercel.app)** — static frontend on
+**Live at [buckeyetransit.org](https://buckeyetransit.org)** — static frontend on
 Vercel, agent backend on Railway, both auto-deployed from `main`. The landing hero is a live mini-map:
 the real route network with the actual buses moving on it, badged honestly ("N running", "no buses right
 now", or "simulated" — never a false "live"). When a trip's best mode is a scooter, the app hands off to
@@ -143,21 +143,22 @@ stops, is in [`SECURITY.md`](./SECURITY.md).
 ## Deployment
 
 Live and auto-deployed: every push to `main` rebuilds the **frontend on Vercel**
-([bus-website-iota.vercel.app](https://bus-website-iota.vercel.app), root `bus-capacity-tracker/`,
-config in its `vercel.json` — including the SPA rewrite that makes `/map`-style deep links work) and the
-**backend on Railway** (root `server/`, config in `server/railway.json`: `npm start`, healthcheck
-`/api/health`, SQLite on a volume at `/data`). The split follows the shapes: the frontend is a static
-Vite build; the backend is a long-lived Node process (background feed poller, in-memory cache + rate
-limiter, SQLite) that serverless would break. The browser calls Railway directly (`VITE_API_BASE`),
-keeping Vercel out of the assistant's SSE path.
+(served at the custom domain [buckeyetransit.org](https://buckeyetransit.org), root
+`bus-capacity-tracker/`, config in its `vercel.json` — including the SPA rewrite that makes `/map`-style
+deep links work) and the **backend on Railway** (root `server/`, config in `server/railway.json`:
+`npm start`, healthcheck `/api/health`, SQLite on a volume at `/data`). The split follows the shapes:
+the frontend is a static Vite build; the backend is a long-lived Node process (background feed poller,
+in-memory cache + rate limiter, SQLite) that serverless would break. The browser calls Railway directly
+(`VITE_API_BASE`), keeping Vercel out of the assistant's SSE path.
 
 Config that lives in dashboards, not git — see the
 [operator checklist in `SECURITY.md`](./SECURITY.md#operator-checklist-deployment) for the full set:
 - **Railway:** `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `GOOGLE_MAPS_SERVER_KEY` (API-restricted),
   `REPORTS_DB=/data/reports.db`, `SEED_DEMO=false`, `USE_MOCK_VEHICLES=false`,
-  `ALLOWED_ORIGIN=<the Vercel origin>` (CORS allow-list).
-- **Vercel:** `VITE_GOOGLE_MAPS_API_KEY` (browser key, HTTP-referrer + Maps-JS-only restricted),
-  `VITE_API_BASE=<the Railway origin>`.
+  `ALLOWED_ORIGIN=https://buckeyetransit.org` (CORS allow-list — the site's origin).
+- **Vercel:** `VITE_GOOGLE_MAPS_API_KEY` (browser key, restricted by HTTP referrer to
+  `buckeyetransit.org` + Maps-JS-only), `VITE_API_BASE=<the Railway origin>`, and the custom domain
+  `buckeyetransit.org` (registered/served via Vercel; `www` redirects to the apex).
 - **Consoles:** hard Anthropic monthly spend cap (the real AI-cost ceiling); Google key restrictions.
 
 ## Tests
