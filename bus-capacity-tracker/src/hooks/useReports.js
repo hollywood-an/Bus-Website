@@ -16,7 +16,6 @@ export function useReports() {
   const [userPoints, setUserPoints] = useState(0);
   const [notification, setNotification] = useState('');
   const [showReward, setShowReward] = useState(false);
-  const [offline, setOffline] = useState(false);
   const clientIdRef = useRef(getClientId()); // shared with plan/suggest so limits key per person
 
   // Personal state.
@@ -60,14 +59,12 @@ export function useReports() {
       const d = await fetch(apiUrl('/api/reports')).then((r) => r.json());
       setCapacity(d.capacity ?? []);
       setDown(d.down ?? []);
-      setOffline(false);
       try {
         await window.storage.set('reports-cache', JSON.stringify({ capacity: d.capacity, down: d.down }));
       } catch {
         /* storage may be unavailable */
       }
     } catch {
-      setOffline(true);
       try {
         const cached = await window.storage.get('reports-cache');
         if (cached?.value) {
@@ -189,20 +186,6 @@ export function useReports() {
     }
   };
 
-  const checkStatus = (code) => {
-    if (!code) return;
-    const info = getCapacityInfo(code);
-    if (!info) {
-      setNotification(`No recent reports for ${nameForCode(code)}`);
-    } else {
-      const tag = info.confident ? '' : ' (unconfirmed)';
-      setNotification(
-        `${nameForCode(code)}: ${info.level.label} · ${info.reporterCount} reporter${info.reporterCount !== 1 ? 's' : ''}${tag}`,
-      );
-    }
-    setTimeout(() => setNotification(''), 5000);
-  };
-
   return {
     routes,
     capacity,
@@ -210,11 +193,9 @@ export function useReports() {
     userPoints,
     notification,
     showReward,
-    offline,
     getCapacityInfo,
     nameForCode,
     submitCapacityReport,
     submitBusDownReport,
-    checkStatus,
   };
 }

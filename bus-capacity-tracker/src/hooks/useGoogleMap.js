@@ -50,7 +50,6 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
   // Routes with no bus in passenger service (provider-aware; see isVehicleRunning) — joined key, same
   // value-stable pattern as selectedKey, so the route-draw effect only re-fires when the set changes.
   const [outOfServiceKey, setOutOfServiceKey] = useState('');
-  const outOfServiceRef = useRef(new Set()); // same data, readable inside stale-closure callbacks (locateUser)
   const [highlightedStops, setHighlightStops] = useState([]); // stop ids the agent asked to emphasize
   // "Running" filter: show only in-service buses + their routes. Session-only (a transient view),
   // unlike the persisted route selection. Peer of "All" — a route selection turns it off.
@@ -329,7 +328,6 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
         .map((r) => r.code)
         .filter((c) => !running.has(c))
         .sort();
-      outOfServiceRef.current = new Set(outCodes);
       setOutOfServiceKey(outCodes.join('|'));
     };
 

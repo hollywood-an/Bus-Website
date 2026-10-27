@@ -1,6 +1,7 @@
 // Hand-maintained bus stop coordinates per route. Extracted verbatim from App.jsx (Phase 0).
-// SCAFFOLDING: many lat/lng values are duplicated/approximate. Slated for replacement by the
-// live OSU CABS feed's real stops in Phase 1.5 (see fixtures/route-*.json). Don't invest here.
+// SCAFFOLDING: many lat/lng values are duplicated/approximate. Only the offline chat fallback still
+// reads this (for stop counts); everything online uses the feed's real stops (server/fixtures/ is the
+// committed fallback). Don't invest here.
 export const BUS_STOPS = {
   'BE': [
     { id: 'buckeye-lot', name: 'Buckeye Lot', lat: 40.015984456541254, lng: -83.03067334770944 },

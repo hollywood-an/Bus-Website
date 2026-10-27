@@ -17,16 +17,5 @@ export interface AgentRequest {
    * prompt for this request only — never stored or logged.
    */
   location?: { lat?: number; lng?: number };
-  /**
-   * Phase 1 only: a crowdsourced capacity/down summary the client computes and sends so the
-   * proxy has parity with the old prompt-stuffing chatbot. This goes away in Phase 1.6/2 when
-   * reports live server-side and the agent reads them via tools instead of trusting the client.
-   */
-  context?: string;
 }
-
-// One JSON object per SSE `data:` line streamed from POST /api/agent.
-export type AgentEvent =
-  | { type: 'delta'; text: string }
-  | { type: 'done'; stop_reason?: string | null }
-  | { type: 'error'; message: string };
+// The SSE event shapes streamed back live with the loop that emits them: AgentEvent in agent/loop.ts.
