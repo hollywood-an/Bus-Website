@@ -4,6 +4,7 @@ import { CAPACITY_LEVELS } from '../data/capacity';
 import { timeAgo, fmtEta } from '../lib/format';
 import { apiUrl } from '../lib/api';
 import { isVehicleRunning } from '../lib/vehicleService';
+import { escapeHtml } from '../lib/html';
 
 // Drives the campus map from the server feed (Phase 1.5). Route list, stops, and polylines come
 // from /api/routes[/:code]; vehicles from /api/vehicles (live or mock, server's choice). Crowding +
@@ -253,8 +254,8 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
               : '';
             infoWindowRef.current.setContent(
               `<div style="padding:6px 8px;font-family:system-ui,sans-serif;min-width:170px;line-height:1.45">
-                 <strong>${stop.name}</strong>
-                 <div style="font-size:13px;margin-top:2px">${nameFor(code)} <span style="color:#888">(${code})</span></div>
+                 <strong>${escapeHtml(stop.name)}</strong>
+                 <div style="font-size:13px;margin-top:2px">${escapeHtml(nameFor(code))} <span style="color:#888">(${escapeHtml(code)})</span></div>
                  <div style="font-size:13px;margin-top:4px">${crowdingHtml(code)}</div>
                  ${downHtml}
                  <div style="font-size:13px;color:#666;margin-top:5px" id="iw-eta" aria-live="polite">Checking next arrival&hellip;</div>
@@ -370,18 +371,18 @@ export function useGoogleMap(view, { capacity = [], down = [], userLocation = nu
         marker.addListener('click', () => {
           if (!infoWindowRef.current) return;
           ++popupTokenRef.current;
-          const dest = v.destination ? ` to ${v.destination}` : '';
+          const dest = v.destination ? ` to ${escapeHtml(v.destination)}` : '';
           const late = v.delayed ? '<div style="color:var(--warn);font-weight:600;margin-top:3px">Running late</div>' : '';
           // ETA when the bus predicts one (clever); for a running-but-prediction-less bus (DoubleMap)
           // say it's live without a fake ETA; only a truly idle bus reads "not in passenger service".
           const next = v.nextStops?.length
-            ? `<div style="font-size:13px;color:#666;margin-top:4px">Next: ${v.nextStops[0].name} ${fmtEta(v.nextStops[0].etaMin)}</div>`
+            ? `<div style="font-size:13px;color:#666;margin-top:4px">Next: ${escapeHtml(v.nextStops[0].name)} ${escapeHtml(fmtEta(v.nextStops[0].etaMin))}</div>`
             : isVehicleRunning(v)
               ? '<div style="font-size:13px;color:#666;margin-top:4px">Live &mdash; no ETA reported</div>'
               : '<div style="font-size:13px;color:#666;margin-top:4px">Not in passenger service</div>';
           infoWindowRef.current.setContent(
             `<div style="padding:6px 8px;font-family:system-ui,sans-serif;min-width:150px;line-height:1.45">
-               <strong>${nameFor(v.route)}</strong> <span style="color:#888">(${v.route})</span>
+               <strong>${escapeHtml(nameFor(v.route))}</strong> <span style="color:#888">(${escapeHtml(v.route)})</span>
                <div style="font-size:13px;margin-top:2px">Bus${dest}</div>
                <div style="font-size:13px;margin-top:4px">${crowdingHtml(v.route)}</div>
                ${next}
