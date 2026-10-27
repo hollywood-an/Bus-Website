@@ -56,3 +56,18 @@ describe('planTrip', () => {
     expect(r).toMatchObject({ error: 'unresolved_to' });
   });
 });
+
+describe('scooter overhead (find + unlock + park)', () => {
+  it('is never quoted below the fixed overhead', async () => {
+    const r = await planTrip('the union', 'rpac');
+    if ('error' in r) throw new Error('unexpected planning error');
+    expect(r.scooterMin).toBeGreaterThanOrEqual(3);
+  });
+
+  it('a short hop is not badged scooter-fastest', async () => {
+    // Morrill -> Hitchcock is ~270 m: a 3-minute walk. Without the overhead the scooter claimed 1 min.
+    const r = await planTrip('morrill', 'hitchcock');
+    if ('error' in r) throw new Error('unexpected planning error');
+    expect(r.fastest).toBe('walk');
+  });
+});

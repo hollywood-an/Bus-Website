@@ -13,6 +13,9 @@ import type { Stop, RouteSummary, RouteDetail, Vehicle } from '../feed';
 // pair, not a fixed table.
 const WALK_MPS = 1.35; // ~4.9 km/h
 const SCOOTER_MPS = 4.2; // ~15 km/h
+// Finding a Veo/Spin, unlocking it in the app, then parking + ending the ride. Without this the scooter
+// is ~3x walking speed from metre zero and badges "fastest" on nearly every trip.
+const SCOOTER_OVERHEAD_S = 180;
 const BUS_MPS = 4.5; // ~16 km/h including stops
 const DWELL_S = 15; // dwell per intermediate stop
 
@@ -81,7 +84,7 @@ export async function planTrip(fromQuery: string | Place, toQuery: string): Prom
     bestBusOption(from, to),
   ]);
   const walkMin = Math.max(1, Math.round(walk.seconds / 60));
-  const scooterMin = Math.max(1, Math.round(walk.meters / SCOOTER_MPS / 60));
+  const scooterMin = Math.max(1, Math.round((walk.meters / SCOOTER_MPS + SCOOTER_OVERHEAD_S) / 60));
 
   const fastest = pickFastest(walkMin, scooterMin, bus?.totalMin);
 

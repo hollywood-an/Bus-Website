@@ -232,7 +232,7 @@ async function planRoute(input: { from?: unknown; to?: unknown; from_lat?: unkno
     note:
       !bus && !result.busesInService
         ? 'No campus buses are in passenger service right now, so the bus is not an option for this trip.'
-        : 'Walk/scooter times from real walking distance; the bus total includes the wait for the next bus. Crowding is crowdsourced.',
+        : 'Walk/scooter times from real walking distance (scooter includes ~3 min to find, unlock, and park one); the bus total includes the wait for the next bus. Crowding is crowdsourced.',
     _geometry: {
       from: { name: result.from.name, lat: result.from.lat, lng: result.from.lng },
       to: { name: result.to.name, lat: result.to.lat, lng: result.to.lng },

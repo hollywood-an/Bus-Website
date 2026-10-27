@@ -158,7 +158,7 @@ export function useChat({ getCapacityInfo, down, nameForCode, submitCapacityRepo
         const route = ROUTE_TIMES[fromLocation][toLocation];
         const walkTime = route.walk;
         const busTime = route.bus;
-        const scooterTime = Math.ceil(walkTime / 5);
+        const scooterTime = Math.ceil(walkTime / 3) + 3; // ~3x walking speed + ~3 min to find/unlock/park (as planTrip)
 
         const routeStopCounts = {
           'Buckeye Express': BUS_STOPS['BE']?.length || 13,
