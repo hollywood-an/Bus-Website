@@ -70,7 +70,7 @@ export async function runAgentLoop(opts: {
         }
         const directive = directiveFor?.(tu.name!, result);
         if (directive) await onEvent(directive);
-        log?.(`[tool] ${tu.name} ${JSON.stringify(tu.input ?? {})} -> ${truncate(JSON.stringify(result))}`);
+        log?.(toolLogLine(tu.name!, tu.input ?? {}, result));
         // Strip `_`-prefixed keys (e.g. map geometry) from what the model sees — it's only for the
         // client directive, and keeping it out of context saves tokens.
         return { type: 'tool_result' as const, tool_use_id: tu.id, content: JSON.stringify(stripPrivate(result)) };
@@ -86,6 +86,17 @@ export async function runAgentLoop(opts: {
 
 function truncate(s: string, n = 300): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+
+// The user's shared location reaches tools only as coordinate arguments (lat/lng, from_lat/from_lng),
+// and it must never land in server logs (SECURITY.md). Redact those arguments, and the whole result of
+// any call that received them: a nearest-stops list or a reverse-geocoded address is the location too.
+const COORD_ARG = /^(from_)?(lat|lng)$/;
+export function toolLogLine(name: string, input: Record<string, unknown>, result: unknown): string {
+  const hasCoords = Object.keys(input).some((k) => COORD_ARG.test(k));
+  const safeInput = Object.fromEntries(Object.entries(input).map(([k, v]) => [k, COORD_ARG.test(k) ? '[redacted]' : v]));
+  const out = hasCoords ? '[redacted: location-derived]' : truncate(JSON.stringify(stripPrivate(result)));
+  return `[tool] ${name} ${JSON.stringify(safeInput)} -> ${out}`;
 }
 
 // Drop top-level keys starting with `_` (client-only payloads like map geometry) from a tool result.

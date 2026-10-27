@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runAgentLoop, type RunTurn } from './loop';
+import { runAgentLoop, toolLogLine, type RunTurn } from './loop';
 
 describe('runAgentLoop', () => {
   it('streams a direct answer and calls no tools', async () => {
@@ -144,5 +144,23 @@ describe('runAgentLoop', () => {
     });
 
     expect(events.some((e) => e.type === 'confirm' && e.action === 'submit_capacity_report')).toBe(true);
+  });
+});
+
+describe('toolLogLine (location never reaches server logs)', () => {
+  it('redacts coordinate args and the whole result of a call that received them', () => {
+    const line = toolLogLine('describe_location', { lat: 40.00123, lng: -83.01987 }, { name: '1739 N High St', address: '1739 N High St, Columbus, OH' });
+    expect(line).not.toMatch(/40\.00123|83\.01987|High St/);
+    expect(line).toContain('[redacted]');
+
+    const trip = toolLogLine('plan_route', { from_lat: 40.00123, from_lng: -83.01987, to: 'rpac' }, { from: 'Your location', to: 'RPAC' });
+    expect(trip).not.toMatch(/40\.00123|83\.01987/);
+    expect(trip).toContain('"to":"rpac"'); // non-location args stay debuggable
+  });
+
+  it('logs ordinary calls in full, minus private client-only keys', () => {
+    const line = toolLogLine('plan_route', { from: 'union', to: 'rpac' }, { walkMin: 9, _geometry: { from: { lat: 39.99785 } } });
+    expect(line).toContain('"walkMin":9');
+    expect(line).not.toContain('39.99785');
   });
 });
