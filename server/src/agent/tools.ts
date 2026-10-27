@@ -497,7 +497,7 @@ export const TOOL_DEFS = [
   {
     name: 'focus_map_on_route',
     description:
-      'Show a route on the campus map (switches to the map view, selects the route, fits it, shows its buses). Call this whenever you talk about a specific route so the user SEES it.',
+      'Show a route on the campus map (switches the user OUT of the chat to the map view, selects the route, fits it, shows its buses). Call this ONLY when the user explicitly asks to see a route on the map; never as a side effect of answering about a route, and never for trip questions (plan_route maps those inside the chat).',
     input_schema: {
       type: 'object',
       properties: { route: { type: 'string', description: 'Route code, e.g. CC.' } },
@@ -507,7 +507,7 @@ export const TOOL_DEFS = [
   {
     name: 'highlight_stops',
     description:
-      'Emphasize specific stops on the map (use stop ids from get_stops). Optionally pass the route to select it first. Pair with focus_map_on_route to point at the stops you mention.',
+      'Emphasize specific stops on the campus map (use stop ids from get_stops). Like focus_map_on_route it switches the user out of the chat to the map, so call it ONLY when the user explicitly wants to see those stops on the map. Optionally pass the route to select it first.',
     input_schema: {
       type: 'object',
       properties: {
