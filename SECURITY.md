@@ -16,9 +16,10 @@ is untrusted, the proxy validates everything, and the model never writes to anyt
 | Model / API keys | Server-side only, behind the proxy | None in the bundle; relies on `server/.env` staying server-side |
 | AI cost / bill run-up | Rate limit + a **hard monthly spend cap** in the Anthropic console | The cap is the true ceiling; the rate limit alone is IP-spoofable |
 | Report writes | Shared validator on both the endpoint and the agent tool | Anonymous; identity is a client-supplied id |
-| Report poisoning | Needs 2 distinct reporters to confirm + median aggregate | A coordinated 2-person pair can still flip a status |
+| Report poisoning | Needs 2 distinct reporters to confirm + median over one vote per reporter | A coordinated 2-person pair can still flip a status |
 | Abuse / spam | Per-client in-memory rate limit | Weak on shared campus NAT; the key is spoofable |
 | CORS | Locked to `ALLOWED_ORIGIN` | Not a defense against non-browser clients |
+| Upstream feed data | Parsed defensively; HTML-escaped at the one raw-HTML sink (map popups) | Escaping is per-sink: any new raw-HTML sink must escape too |
 | Agent loop | Iteration cap + private-field stripping + message caps | Prompt-injection of tool *arguments* is constrained, not eliminated |
 | Errors | Generic message to client, details to server log | None significant |
 
@@ -27,12 +28,12 @@ is untrusted, the proxy validates everything, and the model never writes to anyt
 The original hackathon build called the model directly from the browser, so Vite inlined the model key
 into the shipped JS (extractable from any deploy). That is the real leak the proxy closes.
 
-- `ANTHROPIC_API_KEY` is read only by the Anthropic SDK from the environment (`server/src/app.ts:20`).
+- `ANTHROPIC_API_KEY` is read only by the Anthropic SDK from the environment (`new Anthropic()` in `server/src/app.ts`).
 - `GOOGLE_MAPS_SERVER_KEY` is read only server-side for geocoding and directions
   (`server/src/geo/geocode.ts`, `server/src/geo/directions.ts`), and is sent only to Google (in a request
   header, or a URL query param for the Geocoding fallback), never to the browser.
 - Both live in `server/.env`, which is gitignored; `server/.env.example` ships placeholders only.
-- The only key in the client bundle is `VITE_GOOGLE_MAPS_API_KEY` (`bus-capacity-tracker/src/lib/loadMaps.js:21`),
+- The only key in the client bundle is `VITE_GOOGLE_MAPS_API_KEY` (`loadMaps` in `bus-capacity-tracker/src/lib/loadMaps.js`),
   which is a browser Maps JS key and is *meant* to be public. It must be HTTP-referrer + API restricted (see below).
 - `GET /api/health` exposes `hasKey: Boolean(process.env.ANTHROPIC_API_KEY)`, a boolean only, never the key.
 
@@ -47,7 +48,7 @@ safe error object and never throws.
 
 The important property is that the validator gates **both** paths:
 
-- `POST /api/reports` (`server/src/app.ts:92`), the direct HTTP path, and
+- `POST /api/reports` (`server/src/app.ts`), the direct HTTP path, and
 - the `submit_capacity_report` agent tool.
 
 So a malformed or out-of-range write cannot slip in even if a client skips the agent and POSTs directly.
@@ -61,20 +62,25 @@ Reports are anonymous by design; this is a campus convenience tool, not an authe
 can submit, so the aggregate is hardened rather than the writer (`server/src/store/reportStore.ts`):
 
 - A status only **flips** (a "very full" badge, or a route shown as "down") once it is corroborated by
-  **2 distinct reporters** (`CONFIRM_THRESHOLD`, lines 8, 152, 167). A single report is surfaced as
+  **2 distinct reporters** (`CONFIRM_THRESHOLD`). A single report is surfaced as
   unconfirmed and the agent is told to treat it as weak.
-- Capacity uses a robust aggregate (`robustLevel`, line 175): a true **median** once there are 3+
-  reports, so a single outlier cannot swing a well-corroborated level. With only 1 to 2 reports it falls
-  back to the rounded mean, so at the exact 2-reporter point a status first confirms, one outlier can
-  still move the displayed level by half its distance. Median robustness kicks in as more honest reports
-  accumulate; it is not a guarantee at the confirmation boundary.
+- **One vote per reporter.** Before aggregating, each reporter's reports collapse to their most recent
+  one (`latestPerReporter`). Without this, a single client re-submitting "very full" up to the 15/min
+  write limit would outvote every honest rider in the median. Latest-wins also lets a rider correct
+  their own earlier report.
+- Capacity uses a robust aggregate over those votes (`robustLevel`): a true **median** once there are 3+
+  reporters, so a single outlier cannot swing a well-corroborated level. With only 1 to 2 reporters it
+  falls back to the rounded mean, so at the exact 2-reporter point a status first confirms, one outlier
+  can still move the displayed level by half its distance. Median robustness kicks in as more honest
+  riders report; it is not a guarantee at the confirmation boundary.
 - Reports **decay** on read (30 min capacity / 60 min down), so stale or one-off noise ages out.
 
 **Limitation, stated plainly:** distinct-reporter counting keys off a client-supplied id
-(`x-client-id`, falling back to IP, `server/src/app.ts:95`), which is **spoofable**. The IP fallback is
-no stronger: `clientIp` trusts the `X-Forwarded-For` header (`server/src/rateLimit.ts:50`), which a
-client can also forge. A determined pair of
-clients (or one client with two ids) can still reach the threshold and flip a status. Raising the
+(`x-client-id`, falling back to IP; `reporterId` in the `POST /api/reports` handler), which is
+**spoofable**. The IP fallback is no stronger: `clientIp` (`server/src/rateLimit.ts`) trusts the
+`X-Forwarded-For` header, which a client can also forge. A determined pair of clients (or one client
+rotating ids) can still reach the threshold and flip a status, and with enough rotated ids can also
+outvote honest riders in the median: one vote per reporter only helps while reporter ids are honest. Raising the
 threshold would chill legitimate crowdsourcing, which is the whole point of the app. This is a
 game-theory trade-off, not a solved problem. Real abuse resistance would require accounts or device
 attestation, which is out of scope.
@@ -97,8 +103,9 @@ resets on restart and would be defeated across horizontally-scaled replicas with
 
 The concern behind a public AI endpoint is a bill run-up. Two layers:
 
-- **Per-request cost is bounded by design:** the default model is Claude Haiku (cheapest), each turn is
-  capped at `max_tokens: 1024`, the loop runs at most 8 tool round-trips, and history is capped at 12
+- **Per-request cost is bounded by design:** the code's default model is Claude Haiku (cheapest; the live
+  deployment opts into the pricier `claude-sonnet-5` via `AGENT_MODEL`), each turn is capped at
+  `max_tokens: 1024`, the loop runs at most 8 tool round-trips, and history is capped at 12
   turns × 4000 chars. So a single request is cheap; the only risk is *volume*.
 - **Volume is capped by a hard monthly spend limit** set in the Anthropic console (Billing → Usage
   limits). This is the one control that *physically* cannot be exceeded regardless of any code path,
@@ -119,6 +126,9 @@ The map, planner, and assistant can use the rider's position. Handling, stated p
   server validates them like any input — `Number.isFinite` + the ~5km campus-radius check
   (`parseUserOrigin`, `server/src/geo/util.ts`) — uses them for that response, and discards them.
   They are not written to the report store, not logged, and not placed in URLs beyond the plan query.
+  The agent's tool log is where they would otherwise leak, so it redacts coordinate arguments and the
+  entire result of any call that received them (`toolLogLine`, `server/src/agent/loop.ts`): a
+  nearest-stops list or reverse-geocoded address is the location by another name.
 - **Bounds are enforced server-side** because coordinate origins bypass the geocoder (where the
   campus-radius guard normally lives). Off-campus or garbage coordinates are rejected
   (`unresolved_from`) or silently dropped (agent context), never processed.
@@ -139,6 +149,22 @@ through while rejecting others' browser origins.
 user's browser; it does nothing against a script or curl. The real write protections are validation and
 rate limiting above (and, for cost, the spend cap).
 
+## Upstream feed data (the OSU feed is untrusted)
+
+Route names, stop names, and bus destinations come from OSU's unofficial, unsupported feed. The server
+treats it as untrusted input: every field is type-coerced and validated in `server/src/feed/parse.ts`,
+and junk is dropped rather than passed on. Validation does not make text safe to render as HTML, though,
+so output encoding happens where it renders:
+
+- React renders feed text as text everywhere it can, so most surfaces are safe by construction.
+- The one raw-HTML sink is Google Maps' `InfoWindow.setContent` (the stop and bus popups in
+  `bus-capacity-tracker/src/hooks/useGoogleMap.js`). Every feed-derived string interpolated there goes
+  through `escapeHtml` (`bus-capacity-tracker/src/lib/html.js`), so a malicious or compromised feed
+  value renders as literal text instead of executing in riders' browsers.
+
+**Limitation:** escaping is per-sink, not global. Any new raw-HTML surface (another `setContent`,
+`innerHTML`, `dangerouslySetInnerHTML`) has to escape feed text itself.
+
 ## Agent loop safety
 
 - **Iteration cap:** the loop runs at most 8 tool round-trips then gives up gracefully
@@ -147,7 +173,7 @@ rate limiting above (and, for cost, the spend cap).
   the model's context (`server/src/agent/loop.ts`), so map geometry and other client-only payloads never
   reach the model (smaller context, less to leak or confuse).
 - **Input bounds:** incoming messages are normalized to known roles, trimmed, capped at 4000 chars each
-  and the most recent 12 turns (`normalizeMessages`, `server/src/app.ts:144`), and the request body
+  and the most recent 12 turns (`normalizeMessages`, `server/src/app.ts`), and the request body
   carries only the conversation, never an app-state snapshot the server would have to trust.
 
 **Limitation:** tool *arguments* still originate from model output influenced by user text, so
@@ -158,7 +184,7 @@ only writes are anonymous, validated, rate-limited, decaying bus reports.
 ## Error handling
 
 The agent stream catches errors, logs details to the server console only, and sends the client a generic
-`{ type: 'error', message: 'Agent unavailable' }` (`server/src/app.ts:137`). The client then degrades to
+`{ type: 'error', message: 'Agent unavailable' }` (the `/api/agent` handler in `server/src/app.ts`). The client then degrades to
 an offline responder. Other routes return plain status codes (400 bad JSON, 404 unknown route, 429 rate
 limited). No stack traces or internals reach the client.
 

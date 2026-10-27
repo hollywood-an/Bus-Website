@@ -76,10 +76,11 @@ bus-capacity-tracker/ (Vite + React)        server/ (Hono + TypeScript)         
 
 ## Model choice
 
-Default `claude-haiku-4-5`, swappable with the `AGENT_MODEL` env var (this repo currently runs
-`claude-sonnet-4-6`). Haiku is the production default on purpose: a glance-and-go transit app on a phone
-between classes wants low latency and cost, and Haiku is strong at tool use. Sonnet is the quality
-upgrade for harder multi-step planning.
+The code defaults to `claude-haiku-4-5`, swappable with the `AGENT_MODEL` env var. Haiku is the default
+on purpose: a glance-and-go transit app on a phone between classes wants low latency and cost, and Haiku
+is strong at tool use. Sonnet is the quality upgrade for harder multi-step planning, and the live
+deployment currently runs it (`claude-sonnet-5`) at a higher per-request cost, with the Anthropic spend
+cap as the ceiling.
 
 ## Local setup
 
@@ -138,7 +139,8 @@ stops, is in [`SECURITY.md`](./SECURITY.md).
   straight-line estimates and straight dashed walk legs on the map.
 - **Persistence is SQLite.** Fine for a single instance; in production it lives on a mounted volume
   (`REPORTS_DB=/data/reports.db`) so reports survive redeploys. Bus times are estimates (along-route
-  distance plus dwell), not the official ETA.
+  distance plus dwell), not the official ETA. Scooter times include a flat ~3 min to find, unlock, and
+  park one, so a short walk isn't falsely beaten by a scooter.
 
 ## Deployment
 
