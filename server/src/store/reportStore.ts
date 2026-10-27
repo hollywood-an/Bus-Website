@@ -20,6 +20,7 @@ export interface ReportStore {
 }
 
 interface CapRow {
+  id: number;
   route: string;
   level: number;
   reporterId: string;
@@ -75,9 +76,9 @@ export class SqliteReportStore implements ReportStore {
     const rows = (
       route
         ? this.db
-            .prepare("SELECT route, level, reporterId, createdAt FROM reports WHERE kind='capacity' AND expiresAt > ? AND route = ?")
+            .prepare("SELECT id, route, level, reporterId, createdAt FROM reports WHERE kind='capacity' AND expiresAt > ? AND route = ?")
             .all(now, route.toUpperCase())
-        : this.db.prepare("SELECT route, level, reporterId, createdAt FROM reports WHERE kind='capacity' AND expiresAt > ?").all(now)
+        : this.db.prepare("SELECT id, route, level, reporterId, createdAt FROM reports WHERE kind='capacity' AND expiresAt > ?").all(now)
     ) as CapRow[];
     return aggregateCapacity(rows);
   }
@@ -150,7 +151,7 @@ function aggregateCapacity(rows: CapRow[]): RouteCapacity[] {
       const reporters = new Set(rs.map((r) => r.reporterId));
       return {
         route,
-        level: robustLevel(rs.map((r) => r.level)),
+        level: robustLevel(latestPerReporter(rs).map((r) => r.level)),
         reportCount: rs.length,
         reporterCount: reporters.size,
         newestAt: Math.max(...rs.map((r) => r.createdAt)),
@@ -175,8 +176,21 @@ function aggregateDown(rows: DownRow[]): DownStatus[] {
     .sort((a, b) => a.route.localeCompare(b.route));
 }
 
-// Median down-weights a single outlier (e.g. one troll reporting "very full"); falls back to the
-// rounded mean for 1–2 samples.
+// One vote per reporter: their most recent report. Without this the median runs over raw reports,
+// so a single client re-submitting "very full" (15/min under the rate limit) outvotes every honest
+// rider. Latest-wins also lets a rider correct their own earlier report.
+function latestPerReporter(rows: CapRow[]): CapRow[] {
+  const latest = new Map<string, CapRow>();
+  for (const r of rows) {
+    const prev = latest.get(r.reporterId);
+    // id breaks same-millisecond ties: it's the insertion order.
+    if (!prev || r.createdAt > prev.createdAt || (r.createdAt === prev.createdAt && r.id > prev.id)) latest.set(r.reporterId, r);
+  }
+  return [...latest.values()];
+}
+
+// Median (over one vote per reporter) down-weights a single outlier (e.g. one troll reporting
+// "very full"); falls back to the rounded mean for 1–2 samples.
 function robustLevel(levels: number[]): number {
   if (levels.length === 0) return 0;
   const sorted = [...levels].sort((a, b) => a - b);

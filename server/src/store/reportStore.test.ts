@@ -39,6 +39,23 @@ describe('capacity aggregation + anti-poisoning dampener', () => {
     const [c] = store.capacity('CC');
     expect(c!.level).toBe(1); // median of [1,1,4]
   });
+
+  it('one reporter repeating a report gets one vote, not one per report', () => {
+    store.addCapacity('CC', 1, 'r1');
+    store.addCapacity('CC', 1, 'r2');
+    for (let i = 0; i < 10; i++) store.addCapacity('CC', 4, 'troll'); // spam within the rate limit
+    const [c] = store.capacity('CC');
+    expect(c!.reportCount).toBe(12);
+    expect(c!.reporterCount).toBe(3);
+    expect(c!.level).toBe(1); // median of one vote each: [1,1,4]
+  });
+
+  it("a reporter's latest report replaces their earlier one", () => {
+    store.addCapacity('CC', 4, 'r1');
+    store.addCapacity('CC', 0, 'r1'); // same millisecond is fine: insertion order breaks the tie
+    const [c] = store.capacity('CC');
+    expect(c!.level).toBe(0);
+  });
 });
 
 describe('down corroboration', () => {
