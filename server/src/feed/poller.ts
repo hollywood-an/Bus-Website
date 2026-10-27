@@ -66,22 +66,19 @@ async function refreshStatic(): Promise<boolean> {
   }
 }
 
-async function refreshVehicles(): Promise<boolean> {
-  try {
-    const routes = cache.getRoutes();
-    await Promise.all(
-      routes.map(async (r) => {
-        try {
-          cache.setVehicles(r.code, await osu.fetchVehicles(r.code));
-        } catch {
-          /* keep last-known vehicles for this route */
-        }
-      }),
-    );
-    cache.markSuccess();
-    return true;
-  } catch (err) {
-    cache.markError((err as Error)?.message ?? 'feed error');
+// A route whose fetch fails keeps its last-known vehicles. Only a poll where EVERY route failed counts
+// as a feed outage: that marks the cache not-live and backs off (a per-route catch alone would swallow
+// the outage and report success forever). Exported for unit tests.
+export async function refreshVehicles(): Promise<boolean> {
+  const routes = cache.getRoutes();
+  const results = await Promise.allSettled(
+    routes.map(async (r) => cache.setVehicles(r.code, await osu.fetchVehicles(r.code))),
+  );
+  const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (routes.length > 0 && failures.length === routes.length) {
+    cache.markError((failures[0]!.reason as Error)?.message ?? 'feed error');
     return false;
   }
+  cache.markSuccess();
+  return true;
 }
